@@ -18,10 +18,7 @@ calibrateItems(df, iter = 2000L, chains = 4L, varCorrection = 3,
 
 \item{maxAttempts}{How many times to try re-running a model with more iterations.}
 
-\item{...}{Additional options passed to
-\code{\link[rstan]{stan}}. The usual choices are \code{iter} for
-the number of iterations and \code{chains} for the number of
-chains.}
+\item{...}{Additional options passed to \code{\link[rstan]{stan}}.}
 }
 \value{
 A data.frame (one row per item) with the following columns:

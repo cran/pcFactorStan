@@ -1,10 +1,10 @@
 softmax <- function(y) exp(y) / sum(exp(y))
 
-cmp_probs <- function(scale, pa1, pa2, thRaw) {
+cmp_probs <- function(scale, alpha, pa1, pa2, thRaw) {
   th <- cumsum(thRaw)
   diff <- scale * (pa2 - pa1)
-  unsummed <- c(0, c(diff + rev(th)), c(diff - th), use.names = FALSE)
-  softmax(cumsum(unsummed))
+  unsummed <- c(0, diff + rev(th), diff - th, use.names = FALSE)
+  softmax(cumsum(alpha * unsummed))
 }
 
 pairMap <- function(n) {
@@ -43,10 +43,10 @@ assertNameUnused <- function(df, name) {
   }
 }
 
-#' Generate pairwise comparison data with a common factor that
+#' Generate paired comparison data with a common factor that
 #' accounts for some proportion of the variance
 #'
-#' @param prop the number of items or a vector of proportions of variance
+#' @param prop the number of items or a vector of signed proportions of variance
 #' @inheritParams generateItem
 #' @description
 #'
@@ -67,44 +67,41 @@ assertNameUnused <- function(df, name) {
 #' df <- generateFactorItems(df, 3)
 #' @export
 #' @importFrom stats rnorm sd rbinom rbeta
-generateFactorItems <- function(df, prop, th=0.5, scale=1, name) {
+generateFactorItems <- function(df, prop, th=0.5, name, ..., scale=1, alpha=1) {
   palist <- verifyIsData(df)
   if (length(prop) == 1) {
     if (prop < 3) stop(paste0("At least 3 indicators are required (", prop," requested)"))
     prop <- rbeta(prop, 4, 3)
+    for (cx in 2:length(prop)) {
+      if (rbinom(1, 1, .5)) prop[cx] <- -prop[cx]
+    }
   }
   if (length(prop) < 3) stop(paste0("At least 3 indicators are required (", length(prop)," given)"))
-  if (any(prop < 0 | prop >= 1)) stop("Proportions must be between 0 and 1")
+  if (any(prop <= -1 | prop >= 1)) stop("Signed proportions must be between -1 and 1")
   if (missing(name)) {
     num <- ncol(df)-1
     name <- paste0('i', num:(num+length(prop)-1))
   }
   assertNameUnused(df, name)
-  factorScore <- rnorm(length(palist))
-  factorScore <- c(scale(factorScore))
-  thetaF <- factorScore %*% t(sqrt(prop/(1-prop)))
+  posProp <- abs(prop)
+  factorScore <- c(scale(rnorm(length(palist))))
+  thetaF <- factorScore %*% t(sqrt(posProp/(1-posProp)))
+  thetaF <- t(t(thetaF) * sign(prop))
   thetaN <- matrix(rnorm(length(palist)*length(prop)),
                    length(palist), length(prop))
-  sdN <- apply(thetaN, 2, sd)
-  for (cx in 1:ncol(thetaN)) {
-    thetaN[,cx] <- thetaN[,cx] / sdN[cx]
-  }
+  thetaN <- scale(thetaN)
 
   # to double check
   ## varF <- apply(thetaF, 2, var)
   ## varN <- apply(thetaN, 2, var)
-  ## genProp <- varF / (varF + varN)
+  ## varF / (varF + varN) - posProp
 
-  for (cx in 2:ncol(thetaF)) {
-    if (rbinom(1, 1, .5)) thetaF[,cx] <- -thetaF[,cx]
-  }
-  theta <- thetaF + thetaN
-  theta <- scale(theta)
+  theta <- scale(thetaN + thetaF)
   dimnames(theta) <- list(palist, name)
-  generateItem(df, theta, th, scale)
+  generateItem(df, theta, th, scale=scale, alpha=alpha)
 }
 
-#' Generate pairwise comparison data with random correlations between items
+#' Generate paired comparison data with random correlations between items
 #'
 #' @inheritParams generateItem
 #' @param numItems how many items to create
@@ -124,7 +121,7 @@ generateFactorItems <- function(df, prop, th=0.5, scale=1, name) {
 #'
 #' # generateCovItems essentially does the same thing as:
 #' numItems <- 3
-#' palist <- unique(c(df$pa1,df$pa2))
+#' palist <- letters[1:10]
 #' trueCor <- cov2cor(rWishart(1, numItems, diag(numItems))[,,1])
 #' theta <- rmvnorm(length(palist), sigma=trueCor)
 #' dimnames(theta) <- list(palist, paste0('i', 3 + 1:numItems))
@@ -133,7 +130,7 @@ generateFactorItems <- function(df, prop, th=0.5, scale=1, name) {
 #' @export
 #' @importFrom mvtnorm rmvnorm
 #' @importFrom stats cov2cor rWishart
-generateCovItems <- function(df, numItems, th=0.5, scale=1, name) {
+generateCovItems <- function(df, numItems, th=0.5, name, ..., scale=1, alpha=1) {
   if (numItems < 2) stop("numItems must be 2 or greater")
   palist <- verifyIsData(df)
   if (missing(name)) {
@@ -144,17 +141,19 @@ generateCovItems <- function(df, numItems, th=0.5, scale=1, name) {
   trueCor <- cov2cor(rWishart(1, numItems, diag(numItems))[,,1])
   theta <- rmvnorm(length(palist), sigma=trueCor)
   dimnames(theta) <- list(palist, name)
-  generateItem(df, theta, th, scale)
+  generateItem(df, theta, th, scale=scale, alpha=alpha)
 }
 
-#' Generate pairwise comparison data for one or more items given
+#' Generate paired comparison data for one or more items given
 #' absolute latent scores
 #'
 #' @template args-df
 #' @param theta a vector or matrix of absolute latent scores. See details below.
 #' @param th a vector of thresholds
-#' @param scale the scaling constant
 #' @param name a vector of item names
+#' @template args-dots-barrier
+#' @param scale the scaling constant
+#' @param alpha item discrimination
 #'
 #' @description
 #' To add a single item, \code{theta} should be a vector of latent
@@ -168,7 +167,7 @@ generateCovItems <- function(df, numItems, th=0.5, scale=1, name) {
 #' outcomes.
 #'
 #' The graph can be regarded as undirected, but data are generated
-#' relative to the order of vertices in the row. Vertices do not
+#' relative to the order of vertices within each row. Vertices do not
 #' commute. For example, a \code{-1} for vertices \sQuote{a} and
 #' \sQuote{b} is the same as \code{1} for vertices \sQuote{b} and
 #' \sQuote{a}.
@@ -180,7 +179,7 @@ generateCovItems <- function(df, numItems, th=0.5, scale=1, name) {
 #' df <- roundRobinGraph(letters[1:5], 40)
 #' df <- generateItem(df)
 #' @export
-generateItem <- function(df, theta, th=0.5, scale=1, name) {
+generateItem <- function(df, theta, th=0.5, name, ..., scale=1, alpha=1) {
   if (!missing(theta) && is.matrix(theta)) {
     if (length(colnames(theta))) {
       if (!missing(name)) {
@@ -194,8 +193,11 @@ generateItem <- function(df, theta, th=0.5, scale=1, name) {
       num <- ncol(df)-1
       name <- paste0('i', num:(num+ncol(theta)-1))
     }
+    scale <- c(matrix(scale, nrow=ncol(theta)))
+    alpha <- c(matrix(alpha, nrow=ncol(theta)))
     for (ix in 1:ncol(theta)) {
-      df <- generateItem(df, theta[,ix], th, scale, name[ix])
+      df <- generateItem(df, theta[,ix], th, name[ix],
+                         scale=scale[ix], alpha=alpha[ix])
     }
     return(df)
   }
@@ -224,8 +226,15 @@ generateItem <- function(df, theta, th=0.5, scale=1, name) {
   for (rx in 1:nrow(df)) {
     p1 <- match(df[rx,'pa1'], palist)
     p2 <- match(df[rx,'pa2'], palist)
-    prob <- cmp_probs(scale, theta[p1], theta[p2], th)
+    prob <- cmp_probs(scale, alpha, theta[p1], theta[p2], th)
     df[rx,name] <- sample(pick, 1, prob=prob)
+  }
+  df
+}
+
+objectNamesToFactor <- function(name, df) {
+  for (v in 1:2) {
+    df[[ paste0('pa',v) ]] <- factor(df[[ paste0('pa',v) ]], name)
   }
   df
 }
@@ -252,6 +261,7 @@ roundRobinGraph <- function(name, N) {
     df[rx,'pa1'] <- name[pick[1]]
     df[rx,'pa2'] <- name[pick[2]]
   }
+  df <- objectNamesToFactor(name, df)
   df
 }
 
@@ -269,8 +279,7 @@ roundRobinGraph <- function(name, N) {
 #' to leaf vertices. These vertex connections are similar to the pairs
 #' that you might observe in an elimination tournament. The selected
 #' vertices are sorted so it doesn't matter whether \code{shape1 >
-#' shape2} or \code{shape1 < shape2} as long as \code{shape1 !=
-#' shape2}.
+#' shape2} or \code{shape1 < shape2}.
 #'
 #' @inheritParams roundRobinGraph
 #' @inherit roundRobinGraph return
@@ -306,6 +315,7 @@ twoLevelGraph <- function(name, N, shape1=0.8, shape2=0.5) {
     df[rx,'pa1'] <- name[pick[1]]
     df[rx,'pa2'] <- name[pick[2]]
   }
+  df <- objectNamesToFactor(name, df)
   df
 }
 
@@ -391,4 +401,26 @@ print.filteredGraph <- function(x, ...) {
       message("  too weakly connected: ", deparse(weak))
     }
   }
+}
+
+#' Turn a factor back into a vector of integers
+#'
+#' @param f a factor
+#'
+#' @description
+#'
+#' Factors store values as integers and use a 'levels' attribute to
+#' map the integers to labels. This function removes the 'factor'
+#' class and levels attribute, leaving the vector of integers.
+#'
+#' @examples
+#' f <- factor(letters[1:3])
+#' print(f)
+#' print(unfactor(f))
+#' @export
+unfactor <- function(f) {
+  if (!is.factor(f)) return(f)
+  f <- unclass(f)
+  levels(f) <- c()
+  f
 }

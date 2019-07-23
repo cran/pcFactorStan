@@ -1,0 +1,597 @@
+---
+title: "A brief manual"
+author: Joshua N. Pritikin
+output:
+  html_document:
+    toc: true
+    toc_depth: 2
+vignette: >
+  %\VignetteIndexEntry{Getting started with pcFactorStan}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+set.seed(1)
+is_CRAN <- !identical(Sys.getenv("NOT_CRAN"), "true")
+if (!is_CRAN) {
+   options(mc.cores = parallel::detectCores())
+} else {
+   print("CRAN detected")
+   q()  # takes too long, pretend everything is fine
+}
+library(knitr)
+library(ggplot2)
+library(reshape2)
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  cache.lazy = FALSE  # https://github.com/yihui/knitr/issues/572
+)
+options(digits=4)
+options(scipen=2)
+```
+
+# Overview
+
+The **pcFactorStan** package for **R** provides convenience functions and pre-programmed **Stan** models related to analysis of paired comparison data. Its purpose is to make fitting models using Stan easy and easy to understand. **pcFactorStan** relies on the **rstan** package, which should be installed first.
+[See here](https://github.com/stan-dev/rstan/wiki/RStan-Getting-Started) for instructions on installing **rstan**.
+
+One situation where a factor model might be useful
+is when there are people that play in tournaments of more than
+one game. For example, the computer player AlphaZero (Silver
+et al. 2018) has trained to play chess, shogi, and Go. We can take
+the tournament match outcome data for each of these games
+and find rankings among the players. We may also suspect that there is
+a latent board game skill that accounts for some proportion of the
+variance in the per-board game rankings. This proportion can be
+recovered by the factor model.
+
+Our goal may be to fit a factor model, but it is necessary to
+build up the model step-by-step.
+There are essentially three models: 'unidim', 'correlation', and 'factor'.
+'unidim' analyzes a single item.
+'correlation' is suitable for two or more items.
+Once you have vetted your items with the 'unidim' and 'correlation'
+models, then you can try the 'factor' model.
+There is also a special model 'unidim_adapt'.
+Except for this model, the other models require scaling constants.
+To find appropriate scaling constants, we will
+fit 'unidim_adapt' to each item separately.
+
+# Brief tutorial
+
+## Physical activity flow propensity
+
+The R code below first loads **rstan** and **pcFactorStan**.
+
+```{r, message=FALSE}
+library(rstan)
+library(pcFactorStan)
+```
+
+Next we take a peek at the data.
+
+```{r, results='hide'}
+head(phyActFlowPropensity)
+```
+```{r, results='asis', echo=FALSE}
+kable(head(phyActFlowPropensity))
+```
+
+These data consist of paired comparisons of 87 physical activities on 16 flow-related facets. Participants submitted two activities using free-form input. These activities were substituted into item templates. For example, Item _predict_ consisted of the prompt, "How predictable is the action?" with response options:
+
+* `A1` is much more predictable than `A2`.
+* `A1` is somewhat more predictable than `A2`.
+* Both offer roughly equal predictability.
+* `A2` is somewhat more predictable than `A1`.
+* `A2` is much more predictable than `A1`.
+
+If the participant selected 'golf' and 'running' for activities then 'golf' was substituted into `A1` and 'running' into `A2`. Duly prepared, the item was presented and the participant asked to select the most plausible statement.
+
+A _somewhat more_ response is scored 1 or -1
+and _much more_ scored 2 or -2.
+A tie (i.e. _roughly equal_) is scored as zero.
+We will need to analyze each item separately before
+we analyze them together. Therefore, we will start
+with Item _skill_.
+
+Data must be fed into **Stan** in a partially digested form. The next block of code demonstrates how a suitable data list may be constructed using the `prepData()` function. This function automatically determines the
+number of threshold parameters based on the
+range observed in your data.
+One thing it does not do is pick a `varCorrection` factor. The `varCorrection` determines the degree of adaption in the model. Usually some choice between 2.0 to 4.0 will obtain optimal results.
+
+```{r}
+dl <- prepData(phyActFlowPropensity[,c(paste0('pa',1:2), 'skill')])
+dl$varCorrection <- 2.0
+```
+
+Next we fit the model using the `pcStan()` function, which is a wrapper for `stan()` from **rstan**. We also choose the number of chains.
+As is customary **Stan** procedure, the first half of each chain is used to estimate the
+sampler's weight matrix (i.e. warm up) and excluded from inference.
+
+```{r pcStan, message=FALSE, results='hide', cache=TRUE}
+fit1 <- pcStan("unidim_adapt", data=dl)
+```
+
+A variety of diagnostics are available to check whether the sampler ran into trouble.
+
+```{r pcStanDiag1, cache=TRUE}
+check_hmc_diagnostics(fit1)
+```
+
+Everything looks good, but there are a few more things to check.
+We want $\widehat R$ < 1.015 and effective sample size greater than 100 times the number of chains (Vehtari et al., 2019).
+
+```{r pcStanDiag2, cache=TRUE}
+allPars <- summary(fit1, probs=c())$summary 
+print(min(allPars[,'n_eff']))
+print(max(allPars[,'Rhat']))
+```
+
+Again, everything looks good. If the target values were not reached
+then we would sample the model again with more iterations.
+Time for a plot,
+
+```{r skill, cache=TRUE}
+library(ggplot2)
+
+theta <- summary(fit1, pars=c("theta"), probs=c())$summary[,'mean']
+
+ggplot(data.frame(x=theta, activity=dl$nameInfo$pa, y=0.47)) +
+  geom_point(aes(x=x),y=0) +
+  geom_text(aes(label=activity, x=x, y=y),
+            angle=85, hjust=0, size=2,
+            position = position_jitter(width = 0, height = 0.4)) + ylim(0,1) +
+  theme(legend.position="none",
+        axis.title.x=element_blank(),
+        axis.title.y=element_blank(),
+        axis.text.y=element_blank(),
+        axis.ticks.y=element_blank())
+```
+
+Intuitively, this seems like a fairly reasonable ranking for skill.
+As pretty as the plot is, the main reason that we fit this model
+was to find a scaling constant to produce a standard
+deviation close to 1.0,
+
+```{r}
+s50 <- summary(fit1, pars=c("scale"), probs=c(.5))$summary[,'50%']
+print(s50)
+```
+```{r, results='hide', include = FALSE}
+rm(fit1)  # free up some memory
+```
+
+We use the median instead of the mean because `scale` is not likely to have a symmetric marginal posterior distribution.
+We obtained `r s50`, but that value is just for one item.
+We have to perform the same procedure for every item.
+Wow, that would be really tedious ... if we did not have a function to do it for us!
+Fortunately, `calibrateItems` takes care of it and produces a table
+of the pertinent data,
+
+```{r calibrateItems, message=FALSE, results='hide', cache=TRUE}
+result <- calibrateItems(phyActFlowPropensity, iter=1000L)
+```
+```{r, results='hide'}
+print(result)
+```
+```{r, results='asis', echo=FALSE}
+kable(result)
+```
+
+Items _goal1_ and _feedback1_ ran into trouble.
+A nonzero count of divergent transitions or low_bfmi means that these items contained too little signal to estimate. We could try again with `varCorrection=1.0`, but we are going to exclude them instead.
+The model succeeded on the rest of the items.
+I requested `iter=1000L` to demonstrate how `calibrateItems` will resample the model until the `n_eff` is large enough and the `Rhat` small enough. Item _skill_ (among others) needed more than 1000 samples to converge.
+
+Next we will fit the correlation model. We exclude the Cholesky
+factor of the correlation matrix `rawThetaCorChol` because the
+regular correlation matrix is also output.
+```{r covarianceData, cache=TRUE}
+pafp <- phyActFlowPropensity
+excl <- match(c('goal1','feedback1'), colnames(pafp))
+pafp <- pafp[,-excl]
+dl <- prepData(pafp)
+dl$scale <- result[-excl,'scale'] 
+```
+
+```{r covariance, message=FALSE, results='hide', cache=TRUE}
+fit2 <- pcStan("correlation", data=dl, include=FALSE, pars=c('rawTheta', 'rawThetaCorChol')) 
+```
+
+```{r covarianceDiag1, cache=TRUE}
+check_hmc_diagnostics(fit2) 
+
+allPars <- summary(fit2, probs=0.5)$summary 
+print(min(allPars[,'n_eff']))
+print(max(allPars[,'Rhat']))
+```
+The HMC diagnostics look good, but ... oh dear!
+Something is wrong with the `n_eff` and $\widehat R$.
+Let us look more carefully,
+
+```{r covarianceDiag2, cache=TRUE}
+head(allPars[order(allPars[,'sd']),]) 
+```
+
+Ah ha! It looks like all the entries of the correlation matrix are reported,
+including the entries that are not stochastic but are fixed to constant values.
+We need to filter those out to get sensible results.
+
+```{r covarianceDiag3, cache=TRUE}
+allPars <- allPars[allPars[,'sd'] > 1e-6,]  
+print(min(allPars[,'n_eff']))
+print(max(allPars[,'Rhat']))
+```
+
+Ah, much better. Now we can inspect the correlation matrix. There are
+many ways to visualize a correlation matrix. One of my favorite
+ways is to plot it using the **qgraph** package,
+
+```{r covPlot, cache=TRUE}
+covItemNames <- dl$nameInfo$item
+tc <- summary(fit2, pars=c("thetaCor"), probs=c(.5))$summary[,'50%']
+tcor <- matrix(tc, length(covItemNames), length(covItemNames))
+dimnames(tcor) <- list(covItemNames, covItemNames)
+
+library(qgraph)
+qgraph(tcor, layout = "spring", graph = "cor", labels=colnames(tcor),
+       legend.cex = 0.3,
+       cut = 0.3, maximum = 1, minimum = 0, esize = 20,
+       vsize = 7, repulsion = 0.8, negDashed=TRUE, theme="colorblind")
+```
+
+Based on this plot and theoretical considerations,
+I decided to exclude _spont_, _control_, _evaluated_, and _waiting_
+from the factor model.
+A detailed rationale for why these items, and not others, are excluded
+will be presented in a forthcoming article.
+For now, let us focus on the mechanics of data analysis.
+Here are item response curves,
+
+```{r responseCurves, cache=TRUE}
+df <- responseCurve(dl, fit2, 
+  item=setdiff(dl$nameInfo$item, c('spont','control','evaluated','waiting')),
+  responseNames=c("much more","somewhat more", 'equal',
+                  "somewhat less", "much less"))
+ggplot(df) +
+  geom_line(aes(x=worthDiff,y=prob,color=response,linetype=response,
+                group=responseSample), size=.2, alpha=.2) +
+  xlab("difference in latent worths") + ylab("probability") +
+  ylim(0,1) + facet_wrap(~item) +
+    guides(color=guide_legend(override.aes=list(alpha = 1, size=1)))
+```
+
+These response curves are a function of the `thresholds`, `scale`,
+and `alpha` parameters. A detailed description of the item
+response model can be found in the man page for `responseCurve`.
+A large `alpha` (>1) can mean that the item discriminates among
+objects well. However, it can also mean that the model
+predicts all responses will be _equal_. If most observed responses are
+indeed _equal_ then this can result in good model fit, but another
+interpretation is that the item is useless.
+
+```{r}
+alpha <- summary(fit2, pars=c("alpha"), probs=c(.5))$summary
+rownames(alpha) <- covItemNames
+```
+
+```{r, results='hide'}
+print(alpha[alpha[,'sd']>.25,,drop=FALSE])
+```
+```{r, results='asis', echo=FALSE}
+kable(alpha[alpha[,'sd']>.25,,drop=FALSE])
+```
+
+I already decided to exclude _waiting_ by inspection of
+the correlation matrix, but it looks like
+Item _chatter_ should be excluded as well.
+
+We will enter the `alpha` parameters into the factor model
+as non-stochastic data.
+Trying to estimate `alpha` in the factor model causes bias,
+at least in the models that I have tried.
+The factor model is prone to increase both `alpha` and the
+magnitude of factor proportions at the expense of
+`threshold` accuracy.
+To treat `alpha` as non-stochastic reduces variability
+in the factor model, but not by much.
+Simulations indicate that the posterior distribution remains well calibrated.
+
+I will fit model 'factor_ll' instead of 'factor' so I can use the
+**loo** package to look for outliers.
+We also need to take care that the data `pafp` matches, one-to-one,
+the data seen by Stan so we can map back from the model
+to the data. Hence, we update `pafp` using the usual the data cleaning sequence
+of `filterGraph` and `normalizeData` and pass the result to `prepCleanData`.
+
+```{r factorData1, cache=TRUE}
+pafp <- pafp[,c(paste0('pa',1:2),
+             setdiff(covItemNames, c('spont','control','evaluated','waiting','chatter')))]
+pafp <- normalizeData(filterGraph(pafp))
+dl <- prepCleanData(pafp)
+dl$scale <- result[match(dl$nameInfo$item, result$item), 'scale']
+dl$alpha <- alpha[match(dl$nameInfo$item, rownames(alpha)), 'mean']
+```
+```{r, results='hide', include = FALSE}
+rm(fit2)  # free up some memory
+```
+
+```{r factor, message=FALSE, results='hide', cache=TRUE}
+fit3 <- pcStan("factor_ll", data=dl, include=FALSE, 
+               pars=c('rawUnique', 'rawUniqueTheta', 'rawFactor', 'rawLoadings'))
+```
+
+To check the fit diagnostics, we have to take care to
+examine only the parameters of interest. The factor model outputs
+many parameters that should not be interpreted. For example, we do not
+care about `log_lik` because this vector contains per-observation
+likelihoods for **loo**.
+We also ignore `theta` because it is a function
+of the other parameters.
+
+```{r factorDiag1, cache=TRUE}
+check_hmc_diagnostics(fit3)
+
+interest <- c("threshold", "factorLoadings",  "factorProp", "factor",
+ "unique", "uniqueTheta", "lp__")
+
+allPars <- summary(fit3, pars=interest)$summary
+print(min(allPars[,'n_eff']))
+print(max(allPars[,'Rhat']))
+```
+
+Usually a low effective sample size would suggest that the Markov chains need to run
+for more iterations. However, I tried that and it did not help.
+At 4000 or even 6000 iterations, `n_eff` still did not improve. Which parameters
+are difficult to sample?
+
+```{r factorDiag2, cache=TRUE}
+print(allPars[head(order(allPars[,'n_eff'])),])
+```
+
+Interesting! The most troublesome parameter is `unique[6]`. Let us
+dig more,
+
+```{r body, cache=TRUE}
+print(dl$nameInfo$item[6])
+print(summary(fit3, pars=c('factorProp[6]', 'unique[6]', 'factorLoadings[6]'))$summary)
+```
+
+The effective sample size is large enough for `factorProp[6]` even
+though this quantity is partially derived from `unique[6]`.
+Here we find that the factor proportion for Item _body_ is not
+statistically different from zero at the $\alpha=.05$ level.
+Rather that trying to force this model to converge somehow,
+Item _body_ can be discarded.
+
+```{r factorData2, cache=TRUE}
+pafp <- pafp[,c(paste0('pa',1:2),
+             setdiff(covItemNames, c('spont','control','evaluated','waiting','chatter','body')))]
+pafp <- normalizeData(filterGraph(pafp))
+dl <- prepCleanData(pafp)
+dl$scale <- result[match(dl$nameInfo$item, result$item), 'scale']
+dl$alpha <- alpha[match(dl$nameInfo$item, rownames(alpha)), 'mean']
+```
+
+We rerun the model,
+
+```{r factor2, message=FALSE, results='hide', cache=TRUE}
+fit3 <- pcStan("factor_ll", data=dl, include=FALSE, iter=4000,
+               pars=c('rawUnique', 'rawUniqueTheta', 'rawFactor', 'rawLoadings'))
+```
+
+Let us check the diagnostics,
+
+```{r factor2Diag1, cache=TRUE}
+check_hmc_diagnostics(fit3) 
+
+allPars <- summary(fit3, pars=interest, probs=0.5)$summary 
+print(min(allPars[,'n_eff']))
+print(max(allPars[,'Rhat']))
+```
+
+Looks good! Let us see which data are the most unexpected by the model.
+We create a `loo` object and pass that to `outlierTable`.
+
+```{r factorLoo, cache=TRUE}
+options(mc.cores=1)  # otherwise loo consumes too much RAM 
+l1 <- toLoo(fit3)
+kThreshold <- 0.3
+ot <- outlierTable(dl, l1, kThreshold)
+```
+```{r, results='hide'}
+print(ot)
+```
+```{r, results='asis', echo=FALSE}
+kable(ot)
+```
+
+Observations with $k>0.5$ can be regarded as outliers.
+Every sampling run may identify outliers in a slightly different order.
+We use a threshold of `r kThreshold` instead of 0.5 to ensure
+that at least a few lines are shown.
+
+```{r}
+xx <- which(ot[,'pa1'] == 'tennis' & ot[,'pa2'] == 'water skiing' & ot[,'item'] == 'predict' & ot[,'pick'] == -2)
+```
+
+We will take a closer look at row `r xx`.
+What does a `pick` of `r ot[xx,'pick']` mean? `Pick` numbers are converted
+to response categories by adding the number of thresholds plus one.
+There are two thresholds (_much_ and _somewhat_) so
+3 + `r ot[xx,'pick']` = `r 3+ot[xx,'pick']`.
+Looking back at our item response curve plot,
+the legend gives the response category order from top (1) to bottom (5).
+The first response category is _much more_.
+Putting it all together we obtain an endorsement of
+_`r ot[xx,'pa1']` is much more predictable than `r ot[xx,'pa2']`_.
+Specifically what about that assertion is unexpected?
+We can examine how other participants have responded,
+
+```{r}
+pafp[pafp$pa1 == ot[xx,'pa1'] & pafp$pa2 == ot[xx,'pa2'],
+     c('pa1','pa2', as.character(ot[xx,'item']))]
+```
+
+Hm, this is the only participant that compared `r ot[xx,'pa1']` and `r ot[xx,'pa2']`.
+Let us look a little deeper to understand why this response
+was unexpected.
+
+```{r outlier, cache=TRUE}
+loc <- sapply(ot[xx,c('pa1','pa2','item')], unfactor) 
+exam <- summary(fit3, pars=paste0("theta[",loc[paste0('pa',1:2)],
+                          ",", loc['item'],"]"))$summary
+```
+```{r, results='asis', echo=FALSE}
+kable(exam)
+```
+
+Here we find that, based on comparisons with other activities,
+`r ot[xx,'pa2']` was estimated about `r exam[2,'mean'] - exam[1,'mean']` units more predictable
+than `r ot[xx,'pa1']`. However, note the wide posterior quantiles!
+What are the sample sizes associated with these activities?
+
+```{r}
+sum(c(pafp$pa1 == ot[xx,'pa1'], pafp$pa2 == ot[xx,'pa1']))
+sum(c(pafp$pa1 == ot[xx,'pa2'], pafp$pa2 == ot[xx,'pa2']))
+```
+
+Ah, no wonder, predictability's 95% uncertainty interval for `r ot[xx,'pa2']`
+is from `r exam[2,'2.5%']` to `r exam[2,'97.5%']`.
+So there is practically no information.
+We could continue our investigation by looking at which
+responses justified these _predict_ estimates.
+However, let us move on and
+plot the marginal posterior distributions of the factor proportions,
+
+```{r factorProp, cache=TRUE}
+pi <- parInterval(fit3, 'factorProp', dl$nameInfo$item, label='item') 
+pi <- pi[order(abs(pi$M)),]
+pi$item <- factor(pi$item, levels=pi$item)
+
+ggplot(pi) +
+  geom_vline(xintercept=0, color="green") +
+  geom_jitter(data=parDistributionFor(fit3, pi),
+              aes(value, item), height = 0.35, alpha=.05) +
+  geom_segment(aes(y=item, yend=item, x=L, xend=U),
+               color="yellow", alpha=.5) +
+  geom_point(aes(x=M, y=item), color="red", size=1) +
+  theme(axis.title.y=element_blank())
+```
+
+Finally, we can plot the factor scores. By default, activities with small sample
+sizes are retained by `filterGraph` if they connect other activities
+because they contribute information to the model. However, when we
+look at the per-activity factor scores, we can limit ourselves to
+activities with a sample size of at least 11.
+
+```{r activities, cache=TRUE}
+pa11 <- levels(filterGraph(pafp, minDifferent=11L)$pa1) 
+pick <- paste0('factor[',match(pa11, dl$nameInfo$pa),']')
+pi <- parInterval(fit3, pick, pa11, label='activity')
+pi <- pi[order(pi$M),]
+pi$activity <- factor(pi$activity, levels=pi$activity)
+
+ggplot(pi) +
+  geom_vline(xintercept=0, color="green") +
+  geom_jitter(data=parDistributionFor(fit3, pi, samples=250),
+              aes(value, activity), height = 0.35, alpha=.05) +
+  geom_segment(aes(y=activity, yend=activity, x=L, xend=U),
+               color="yellow", alpha=.5) +
+  geom_point(aes(x=M, y=activity), color="red", size=1) +
+  theme(axis.title.y=element_blank()) 
+```
+
+And there you have it. If you have not done so already,
+go find a dojo and commence study of martial arts!
+
+# Technical notes
+
+Given that my background is more in software than math,
+I am not a fan of the greek letters used
+with such enthusiasm by mathematicians.
+When I name variables, I favor the expressive over the succinct.
+
+If you read through the **Stan** models included with this package, you will find some
+variables prefixed with `raw`. These are special variables
+internal to the model. In particular, you should not try
+to evaluate the $\widehat R$ or effective sample size
+of `raw` parameters. These parameters are best excluded
+from the sampling output.
+
+## Unidim Adapt
+
+| parameter | prior             | purpose                  |
+|-----------|-------------------|--------------------------|
+| threshold | normal(0,2)       | item response thresholds |
+| theta     | normal(0,sigma)   | latent score             |
+| sigma     | lognormal(1,1)    | latent score scale             |
+| scale     | N/A               | latent score scaling constant  |
+
+The 'unidim_adapt' model has a `varCorrection` constant
+that is used to calibrate the `scale`. For all other models,
+per-item `scale` must be passed in as data.
+`scale` has no substantive interpretation, but it is used to
+partition signal between object variance and item discrimination.
+While object variance has no substantive interpretation,
+item discrimination is interpretable.
+
+## Unidim
+
+| parameter | prior             | purpose                  |
+|-----------|-------------------|--------------------------|
+| threshold | normal(0,2)       | item response thresholds |
+| alpha     | exponential(0.1)  | item discrimination    |
+| theta     | normal(0,1)       | latent score    |
+
+## Correlation
+
+| parameter | prior             | purpose                              |
+|-----------|-------------------|--------------------------------------|
+| threshold | normal(0,2)       | item response thresholds             |
+| alpha     | exponential(0.1)  | item discrimination    |
+| thetaCor  | lkj(2)            | correlations between items           |
+| theta     | _see below_       | latent score                |
+
+Thresholds for all items are combined into a single vector.
+The prior for `theta` is multivariate normal with correlations
+`thetaCor` and scale 1.0.
+Exclude `rawTheta` and `rawThetaCorChol` from sampling reports.
+
+## Factor
+
+| parameter      | prior               | purpose                              |
+|----------------|---------------------|--------------------------------------|
+| threshold      | normal(0,2)         | item response thresholds             |
+| unique         | normal(1,1)         | scale of unique scores               |
+| uniqueTheta    | normal(0,1)         | unique scores                        |
+| factorLoadings | normal(0,1)         | signed scale of factor scores        |
+| factor         | normal(0,1)         | factor scores                        |
+| factorProp     | N/A                 | signed factor variance proportion    |
+| sigma          | N/A                 | relative item scale                  |
+
+Thresholds for all items are combined into a single vector.
+`factorProp` is computed using Equation 3 of Gelman et al. (in press)
+and has no prior of its own.
+`factorLoadings` is in standard deviation units but can be negative.
+Similarly, `factorProp` is a signed proportion bounded between -1 and 1.
+Exclude `rawUnique`, `rawUniqueTheta`, `rawFactor`, and `rawLoadings` from sampling.
+
+# References
+
+Gelman, A., Goodrich, B., Gabry, J., & Vehtari, A. (in press). R-squared for Bayesian regression models. _The American Statistician._ DOI: 10.1080/00031305.2018.1549100
+
+Silver, D., Hubert, T., Schrittwieser, J., Antonoglou, I., Lai, M.,
+Guez, A., ... & Lillicrap, T. (2018). A general reinforcement
+learning algorithm that masters chess, shogi, and Go through
+self-play. Science, 362(6419), 1140-1144.
+
+Vehtari, A., Gelman, A., Simpson, D., Carpenter, B., & Bürkner, P. C. (2019). Rank-normalization, folding, and localization: An improved $\widehat R$ for assessing convergence of MCMC. _arXiv preprint_ arXiv:1903.08008.
+
+# R Session Info
+
+```{r}
+sessionInfo()
+```

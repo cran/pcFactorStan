@@ -23,7 +23,7 @@ Once you have vetted your items with the \sQuote{unidim} and \sQuote{covariance}
 then you can try the \sQuote{factor} model.
 For each model, there is a \sQuote{_ll} variation. This model
 includes row-wise log likelihoods suitable for feeding to \pkg{loo}
-for efficient approximate leave-one-out cross-validation.
+for efficient approximate leave-one-out cross-validation (Vehtari, Gelman, & Gabry, 2017).
 
 There is also a special model \sQuote{unidim_adapt}.  Except for
 this model, the other models require a scaling constant.  To find
@@ -36,4 +36,12 @@ should provide optimal results.
 \examples{
 findModel()  # shows available models
 findModel('unidim')
+}
+\references{
+Vehtari A, Gelman A, Gabry J (2017). "Practical Bayesian model evaluation
+using leave-one-out cross-validation and WAIC." _Statistics and Computing_,
+*27*, 1413-1432. doi: 10.1007/s11222-016-9696-4
+}
+\seealso{
+\code{\link{toLoo}}
 }

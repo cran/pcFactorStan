@@ -27,8 +27,7 @@ tend to connect a small subset of vertices from the top of the tree
 to leaf vertices. These vertex connections are similar to the pairs
 that you might observe in an elimination tournament. The selected
 vertices are sorted so it doesn't matter whether \code{shape1 >
-shape2} or \code{shape1 < shape2} as long as \code{shape1 !=
-shape2}.
+shape2} or \code{shape1 < shape2}.
 }
 \examples{
 twoLevelGraph(letters[1:5], 20)

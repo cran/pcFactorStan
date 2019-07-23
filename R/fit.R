@@ -1,7 +1,7 @@
 #' Normalize data according to a canonical order
 #'
 #' @template args-df
-#' @param ...  Not used.  Forces remaining arguments to be specified by name.
+#' @template args-dots-barrier
 #' @param .palist a character vector giving an order to use instead of the default
 #' @param .sortRows logical. Using the same order, sort rows in addition to vertex pairs.
 #'
@@ -75,6 +75,7 @@ prepCleanData <- function(df) {
 
   dataCols <- -match(paste0('pa',1:2), colnames(df))
   nthr <- apply(df[,dataCols,drop=FALSE], 2, function(x) max(abs(x), na.rm=TRUE))
+  itemNames <- names(nthr)
   names(nthr) <- NULL
 
   tall <- melt(df, id.vars = paste0('pa',1:2),
@@ -104,6 +105,7 @@ prepCleanData <- function(df) {
   }
 
   dl <- list(
+    nameInfo=list(pa=palist, item=itemNames),
     # all models
     NPA=length(palist),
     NCMP=length(pick),
@@ -122,7 +124,7 @@ prepCleanData <- function(df) {
     item=item
   )
   if (any(is.na(match(preppedDataFields, names(dl))))) {
-    stop("Bug in prepCleanData(); contact developers")
+    stop("Bug in prepCleanData(); contact developers") # nocov
   }
   dl
 }
@@ -154,7 +156,8 @@ prepData <- function(df) {
   prepCleanData(df)
 }
 
-preppedDataFields <- c('NPA','NCMP','N','pa1','pa1','weight','pick','refresh')
+preppedDataFields <- c('nameInfo','NPA','NCMP','N','pa1','pa1','weight',
+                       'pick','refresh')
 
 verifyIsPreppedData <- function(data) {
   if (is.data.frame(data)) stop("Data must be processed by prepData. Try prepData(data)")
@@ -178,7 +181,7 @@ verifyIsPreppedData <- function(data) {
 #' then you can try the \sQuote{factor} model.
 #' For each model, there is a \sQuote{_ll} variation. This model
 #' includes row-wise log likelihoods suitable for feeding to \pkg{loo}
-#' for efficient approximate leave-one-out cross-validation.
+#' for efficient approximate leave-one-out cross-validation (Vehtari, Gelman, & Gabry, 2017).
 #'
 #' There is also a special model \sQuote{unidim_adapt}.  Except for
 #' this model, the other models require a scaling constant.  To find
@@ -189,6 +192,8 @@ verifyIsPreppedData <- function(data) {
 #' should provide optimal results.
 #'
 #' @return An instance of S4 class \code{\link[rstan:stanmodel-class]{stanmodel}} that can be passed to \code{\link{pcStan}}.
+#' @seealso \code{\link{toLoo}}
+#' @template ref-vehtari2017
 #' @examples
 #' findModel()  # shows available models
 #' findModel('unidim')
@@ -209,9 +214,9 @@ findModel <- function(model=NULL) {
   obj
 }
 
-#' Fit a pairwise comparison Stan model
+#' Fit a paired comparison Stan model
 #' @template args-locate
-#' @param data a data list prepared for processing by Stan
+#' @template args-data
 #' @template args-stan
 #' @description Uses \code{\link{findModel}} to find the appropriate
 #'   model and then invokes \link[rstan:sampling]{sampling}.
@@ -223,7 +228,7 @@ findModel <- function(model=NULL) {
 #'   summarizing parameter posteriors.
 #'
 #' @return An object of S4 class \code{\link[rstan:stanfit-class]{stanfit}}.
-#' @seealso \code{\link{calibrateItems}}
+#' @seealso \code{\link{calibrateItems}}, \code{\link{outlierTable}}
 #' @examples
 #' dl <- prepData(phyActFlowPropensity[,c(1,2,3)])
 #' dl$varCorrection <- 2.0
@@ -279,7 +284,6 @@ calibrateItems <- function(df, iter=2000L, chains=4L, varCorrection=3.0, maxAtte
   df <- filterGraph(df)
   df <- normalizeData(df)
   vCol <- match(paste0('pa',1:2), colnames(df))
-  chains <- 4L
   varCorrection <- 3.0
   result <- expand.grid(item=colnames(df[,-vCol]),
                         iter=NA,
@@ -296,7 +300,7 @@ calibrateItems <- function(df, iter=2000L, chains=4L, varCorrection=3.0, maxAtte
       dl <- prepCleanData(df[,c(vCol, itemCol)])
       dl$varCorrection <- varCorrection
       result[rx,'iter'] <- ifelse(is.na(result[rx,'iter']), iter, result[rx,'iter'] * 1.5)
-      fit1 <- suppressWarnings(pcStan("unidim_adapt", data=dl, chains=chains, iter=result[rx,'iter']))
+      fit1 <- suppressWarnings(pcStan("unidim_adapt", data=dl, chains=chains, iter=result[rx,'iter'], ...))
       result[rx,'divergent'] <- get_num_divergent(fit1)
       result[rx,'treedepth'] <- sum(get_max_treedepth_iterations(fit1))
       result[rx,'low_bfmi'] <- length(get_low_bfmi_chains(fit1))
@@ -308,4 +312,309 @@ calibrateItems <- function(df, iter=2000L, chains=4L, varCorrection=3.0, maxAtte
     }
   }
   result
+}
+
+#' Compute approximate leave-one-out (LOO) cross-validation for Bayesian
+#' models using Pareto smoothed importance sampling (PSIS)
+#'
+#' @template args-fit
+#' @param ... Additional options passed to \code{\link[loo:loo]{loo}}.
+#'
+#' @description
+#'
+#' You must use an \sQuote{_ll} model variation (see \code{\link{findModel}}).
+#'
+#' @return a loo object
+#' @seealso \code{\link{outlierTable}}, \code{\link[loo:loo]{loo}}
+#' @importFrom loo loo extract_log_lik relative_eff
+#' @export
+#' @examples
+#' palist <- letters[1:10]
+#' df <- twoLevelGraph(palist, 300)
+#' theta <- rnorm(length(palist))
+#' names(theta) <- palist
+#' df <- generateItem(df, theta, th=rep(0.5, 4))
+#'
+#' df <- filterGraph(df)
+#' df <- normalizeData(df)
+#' dl <- prepCleanData(df)
+#' dl$scale <- 1.5
+#'
+#' \donttest{
+#' m1 <- pcStan("unidim_ll", dl)
+#'
+#' loo1 <- toLoo(m1, cores=1)
+#' print(loo1)
+#' }
+toLoo <- function(fit, ...) {
+  ll <- extract_log_lik(fit, merge_chains = FALSE)
+  loo(ll, r_eff=relative_eff(exp(ll)), ...)
+}
+
+#' List observations with Pareto values larger than a given threshold
+#'
+#' @template args-data
+#' @param x An object created by \code{\link[loo:loo]{loo}}
+#' @param threshold threshold is the minimum k value to include
+#'
+#' @description
+#'
+#' The function \code{\link{prepCleanData}} compresses observations
+#' into the most efficient format for evaluation by Stan. This function
+#' maps indices of observations back to the actual observations,
+#' filtering by the largest Pareto k values. It is assumed that
+#' \code{data} was processed by \code{\link{normalizeData}} or is in
+#' the same order as seen by \code{\link{prepCleanData}}.
+#'
+#' @return
+#' A data.frame (one row per observation) with the following columns:
+#' \describe{
+#' \item{pa1}{Name of object 1}
+#' \item{pa2}{Name of object 2}
+#' \item{item}{Name of item}
+#' \item{pick}{Observed response}
+#' \item{k}{Associated Pareto k value}
+#' }
+#' @seealso \code{\link{toLoo}}, \code{\link[loo:pareto-k-diagnostic]{pareto_k_ids}}
+#' @importFrom loo pareto_k_ids pareto_k_values
+#' @export
+#' @examples
+#' palist <- letters[1:10]
+#' df <- twoLevelGraph(palist, 300)
+#' theta <- rnorm(length(palist))
+#' names(theta) <- palist
+#' df <- generateItem(df, theta, th=rep(0.5, 4))
+#'
+#' df <- filterGraph(df)
+#' df <- normalizeData(df)
+#' dl <- prepCleanData(df)
+#' dl$scale <- 1.5
+#'
+#' \donttest{
+#' m1 <- pcStan("unidim_ll", dl)
+#'
+#' loo1 <- toLoo(m1, cores=1)
+#' ot <- outlierTable(dl, loo1, threshold=.2)
+#' df[df$pa1==ot[1,'pa1'] & df$pa2==ot[1,'pa2'], 'i1']
+#' }
+outlierTable <- function(data, x, threshold=0.5) {
+  verifyIsPreppedData(data)
+  ids <- pareto_k_ids(x, threshold)
+  loc <- c(1L, 1L+cumsum(data$weight))
+  offset <- findInterval(ids, loc)
+  palist <- data$nameInfo$pa
+  itemName <- data$nameInfo$item
+  df <- data.frame(pa1=data$pa1[offset],
+             pa2=data$pa2[offset],
+             item=data$item[offset],
+             pick=data$pick[offset],
+             k=pareto_k_values(x)[ids])
+  for (k in paste0('pa',1:2)) {
+    levels(df[[k]]) <- palist
+    class(df[[k]]) <- 'factor'
+  }
+  levels(df[['item']]) <- itemName
+  class(df[['item']]) <- 'factor'
+  df <- df[order(-df$k),]
+  rownames(df) <- c()  # original order is meaningless
+  df
+}
+
+assertDataFitCompat <- function(dl, fit) {
+  if (!is(dl, 'list')) stop("dl must be a list of data")
+  if (!is(fit, 'stanfit')) stop("fit must be a stanfit object")
+  pd <- fit@par_dims
+  if (pd$theta[1] != dl$NPA) {
+    stop(paste0("dl has ",dl$NPA," objects but fit has ",pd$theta[1]," objects"))
+  }
+  fitItems <- ifelse(length(pd$theta)==1, 1, pd$theta[2])
+  if (!fitItems == dl$NITEMS) {
+    stop(paste0("dl has ",dl$NITEMS," items but fit has ",fitItems," items"))
+  }
+  if (pd$threshold != sum(dl$NTHRESH)) {
+    stop(paste0("dl has a total of ",dl$NTHRESH," thresholds across all items but fit has ",
+                pd$threshold," thresholds"))
+  }
+}
+
+#' Produce data suitable for plotting item response curves
+#'
+#' @template args-dl
+#' @template args-fit
+#' @param item a vector of item names
+#' @param responseNames a vector of labels for the possible responses
+#' @template args-samples
+#' @param from the starting latent difference value
+#' @param to the ending latent difference value
+#' @param by the grid increment
+#'
+#' @description
+#' Selects \code{samples} random draws from the posterior and evaluates the item
+#' response curve on the grid given by \code{seq(from,to,by)}.
+#' All items use the same \code{responseNames}. If you have some items
+#' with a different number of thresholds or different response names
+#' then you can call \code{responseCurve} for each item separately
+#' and \code{rbind} the results together.
+#'
+#' @template detail-response
+#' @template ref-masters1982
+#' @return
+#' A data.frame with the following columns:
+#' \describe{
+#' \item{response}{Which response}
+#' \item{worthDiff}{Difference in worth}
+#' \item{item}{Which item}
+#' \item{sample}{Which sample}
+#' \item{prob}{Associated probability}
+#' \item{responseSample}{A grouping index for independent item response samples}
+#' }
+#' @export
+#' @importFrom rstan extract
+#' @family data extractor
+#' @examples
+#' \donttest{ vignette('manual', 'pcFactorStan') }
+responseCurve <- function(dl, fit, responseNames, item=dl$nameInfo$item,
+                          samples=100, from=-6, to=-from, by=.1) {
+  assertDataFitCompat(dl, fit)
+  pd <- fit@par_dims
+  itemIndex <- match(item, dl$nameInfo$item)
+  if (any(is.na(itemIndex))) {
+    stop(paste0("Item not found: ",
+                paste(item[is.na(itemIndex)], collapse=', ')))
+  }
+  mismatch <- (1 + 2 * dl$NTHRESH[itemIndex]) != length(responseNames)
+  if (any(mismatch)) {
+    stop(paste0("Item with different number of responseNames: ",
+                paste(item[mismatch], collapse=', ')))
+  }
+  grid <- seq(from,to,by)
+  df <- expand.grid(response=responseNames, worthDiff=grid,
+                    item=item, sample=1:samples, prob=NA)
+  pick <- c()
+  for (i1 in item) {
+    ii <- match(i1, dl$nameInfo$item)
+    thrInd <- dl$TOFFSET[ii] + 1:dl$NTHRESH[ii] - 1L
+    thrData <- extract(fit, pars=paste0("threshold[",thrInd,"]"))
+    if ('alpha' %in% names(pd)) {
+      if (length(pd$alpha) == 0) {
+        alphaData <- extract(fit, pars="alpha")[[1]]
+      } else {
+        alphaData <- extract(fit, pars=paste0("alpha[",ii,"]"))[[1]]
+      }
+    } else {
+      alphaData <- dl$alpha[ii]
+    }
+    if (length(pick)==0) {
+      samples <- min(length(thrData[[1]]), samples)
+      pick <- sample.int(length(thrData[[1]]), samples)
+    }
+    for (sx in 1:samples) {
+      mask <- df$item == i1 & df$sample == sx
+      p1 <- sapply(grid, function(gx) {
+        if (length(alphaData) > 1) {
+          alpha <- alphaData[pick[sx]]
+        } else {
+          alpha <- alphaData
+        }
+        cmp_probs(dl$scale[ii], alpha, 0, gx,
+                  sapply(thrData, function(x) x[pick[sx]]))
+      })
+      df[mask, 'prob'] <- c(p1)
+    }
+  }
+  df$responseSample <-
+    (match(df$item, dl$nameInfo$item) * length(responseNames) * samples +
+     df$sample * length(responseNames) +
+     unfactor(df$response)-1L)
+  df
+}
+
+#' Remove the array indexing from a parameter name
+#' @param name a parameter name
+#' @return the name without the square bracket parameter indexing
+#' @examples
+#' withoutIndex("foo[1,2")
+#' @export
+withoutIndex <- function(name) {
+  sub("\\[[\\d,]+\\]$", "", name, perl=TRUE)
+}
+
+#' Produce data suitable for plotting parameter estimates
+#' 
+#' @template args-fit
+#' @param pars a vector of parameter names
+#' @param label column name for \code{nameVec}
+#' @param nameVec a vector of explanatory parameters names
+#' @param width a width in probability units for the uncertainty interval
+#'
+#' @return
+#' A data.frame with the following columns:
+#' \describe{
+#' \item{L}{Lower quantile}
+#' \item{M}{Median}
+#' \item{U}{Upper quantile}
+#' \item{\emph{label}}{\emph{nameVec}}
+#' }
+#' @export
+#' @importFrom rstan summary
+#' @family data extractor
+#' @examples
+#' \donttest{ vignette('manual', 'pcFactorStan') }
+parInterval <- function(fit, pars, nameVec,
+                        label=withoutIndex(pars[1]), width=0.8) {
+  probs <- 0.5 + c(-width/2, 0, width/2)
+  interval <- summary(fit, pars=pars, probs=probs)$summary[,4:6,drop=FALSE]
+  colnames(interval) <- c("L","M","U")
+  interval <- as.data.frame(interval)
+  interval[[label]] <- factor(nameVec, levels=nameVec)
+  interval
+}
+
+#' Produce data suitable for plotting parameter distributions
+#' 
+#' @template args-fit
+#' @param pars a vector of parameter names
+#' @param label column name for \code{nameVec}
+#' @param nameVec a vector of explanatory parameters names
+#' @template args-samples
+#' @return
+#' A data.frame with the following columns:
+#' \describe{
+#' \item{sample}{Sample index}
+#' \item{\emph{label}}{A name from \emph{nameVec}}
+#' \item{value}{A single sample of the associated parameter}
+#' }
+#' @export
+#' @importFrom rstan extract
+#' @importFrom reshape2 melt
+#' @family data extractor
+#' @examples
+#' \donttest{ vignette('manual', 'pcFactorStan') }
+parDistributionCustom <- function(fit, pars, nameVec,
+                                  label=withoutIndex(pars[1]), samples=500) {
+  colSet <- extract(fit, pars)
+  nextCol <- 1L
+  pick <- c()
+  tall <- NULL
+  for (c1 in colSet) {
+    if (length(dim(c1)) == 1) c1 <- as.matrix(c1)
+    colnames(c1) <- nameVec[nextCol:(nextCol + ncol(c1) - 1L)]
+    nextCol <- nextCol + ncol(c1)
+    if (length(pick) == 0) {
+      samples <- min(nrow(c1), samples)
+      pick <- sample.int(nrow(c1), samples)
+    }
+    c1 <- c1[pick,,drop=FALSE]
+    tall1 <- melt(c1)
+    colnames(tall1)[1:2] <- c('sample',label)
+    tall <- rbind(tall, tall1)
+  }
+  tall
+}
+
+#' @param pi a data.frame returned by \code{\link{parInterval}}
+#' @rdname parDistributionCustom
+#' @export
+parDistributionFor <- function(fit, pi, samples=500) {
+  parDistributionCustom(fit, rownames(pi), nameVec=pi[[4]], label=colnames(pi)[4])
 }

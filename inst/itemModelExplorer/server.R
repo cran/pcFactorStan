@@ -26,28 +26,42 @@ softmax <- function(y) exp(y) / sum(exp(y))
 cmp_probs <- function(alpha, scale, rawDiff, thRaw) {
   th <- cumsum(thRaw)
   diff = scale * rawDiff
-  unsummed <- c(0, c(diff + rev(th)), c(diff - th), use.names = FALSE)
+  unsummed <- c(0, diff + rev(th), diff - th, use.names = FALSE)
   cumsum(unsummed * alpha)
 }
 
 calcProb <- function(par, theta) {
   sapply(theta, function(x) softmax(cmp_probs(par['discrimination'], par['scale'], x,
-    c(par['th1'], par['th2']))), USE.NAMES=FALSE)
+    par[-(1:2)])), USE.NAMES=FALSE)
 }
 
 shinyServer(function(input, output, session) {
-  par <- c(discrimination=1.749, scale=1, th1=.8, th2=1.7)
-  state <- reactiveValues(par = par)
-  
-  parNames <- names(par)
-  updateSelectInput(session, "editPar", choices = parNames, selected = parNames[1])
+  default <- itemModelExplorer.default
+
+  initialValues <- c(discrimination=1, scale=default$scaleValue)
+  for (tx in 1:length(default$thresholds)) {
+    initialValues[[paste0('th',tx)]] <- default$thresholds[tx]
+  }
+  state <- reactiveValues(par = initialValues)
+
+  observe({
+    numThr <- input$numThresholds
+    oldPar <- isolate(state$par)
+    if (numThr + 2 == length(oldPar)) return()
+    par <- oldPar[1:3]
+    if (numThr > 1) par <- c(par, rep(2*par[3], numThr-1))
+    names(par)[3:length(par)] <- paste0('th',1:numThr)
+    state$par <- par
+    updateSelectInput(session, "editPar", choices = names(par),
+                      selected = 'discrimination')
+  })
 
   observe({
      newVal <- input$editParValue
      if (!is.numeric(newVal)) return()
      moveParameter(input, state, newVal)
    })
-  
+
   observe({
     whichPar <- input$editPar
     val <- isolate(state$par[whichPar])
@@ -57,13 +71,13 @@ shinyServer(function(input, output, session) {
   })
 
   output$parView <- renderTable({
-    data.frame(par=state$par)
+    data.frame(name=names(state$par), par=state$par)
   })
-  
+
   output$plot1 <- renderPlot({
     width <- 4
     grid <- expand.grid(theta=seq(-width,width,.1))
-    
+
     trace <- try(calcProb(state$par, grid$theta), silent = TRUE)
     if (inherits(trace, "try-error") || any(is.na(trace))) {
       pl <- ggplot(grid, aes(theta, 0)) + geom_line() + ylim(0,1) +
@@ -72,11 +86,10 @@ shinyServer(function(input, output, session) {
     }
     grid <- cbind(grid, t(trace))
     grid2 <- melt(grid, id.vars=c("theta"), variable.name="category", value.name="p")
-    
+
     ggplot(grid2, aes(theta, p, color=category)) + geom_line() +
       ylim(0,1) + xlim(-width, width)  + theme(legend.position="none")
   })
 })
 
 # runApp('.',display.mode="showcase")
-

@@ -2,7 +2,7 @@
 % Please edit documentation in R/fit.R
 \name{pcStan}
 \alias{pcStan}
-\title{Fit a pairwise comparison Stan model}
+\title{Fit a paired comparison Stan model}
 \usage{
 pcStan(model, data, ...)
 }
@@ -11,10 +11,7 @@ pcStan(model, data, ...)
 
 \item{data}{a data list prepared for processing by Stan}
 
-\item{...}{Additional options passed to
-\code{\link[rstan]{stan}}. The usual choices are \code{iter} for
-the number of iterations and \code{chains} for the number of
-chains.}
+\item{...}{Additional options passed to \code{\link[rstan]{stan}}.}
 }
 \value{
 A \code{\link[rstan:stanfit-class]{stanfit}} object.
@@ -37,5 +34,5 @@ See \code{\link[rstan:sampling]{sampling}}, for which this function is
   \code{\link[rstan:print.stanfit]{print.stanfit}} for ways of getting tables
   summarizing parameter posteriors.
 
-\code{\link{calibrateItems}}
+\code{\link{calibrateItems}}, \code{\link{outlierTable}}
 }
