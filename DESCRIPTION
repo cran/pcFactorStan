@@ -1,6 +1,6 @@
 Package: pcFactorStan
 Title: Stan Models for the Pairwise Comparison Factor Model
-Version: 1.0.1
+Version: 1.0.2
 Authors@R: 
     c(person(given = c("Joshua", "N."),
            family = "Pritikin",
@@ -26,10 +26,10 @@ NeedsCompilation: yes
 URL: https://github.com/jpritikin/pcFactorStan
 BugReports: https://github.com/jpritikin/pcFactorStan/issues
 RoxygenNote: 6.1.1
-Packaged: 2019-07-23 18:19:59 UTC; joshua
+Packaged: 2019-07-25 16:50:07 UTC; joshua
 Author: Joshua N. Pritikin [aut, cre] (<https://orcid.org/0000-0002-9862-5484>),
   Daniel C. Furr [ctb],
   Trustees of Columbia University [cph]
 Maintainer: Joshua N. Pritikin <jpritikin@pobox.com>
 Repository: CRAN
-Date/Publication: 2019-07-23 19:40:02 UTC
+Date/Publication: 2019-07-25 22:20:07 UTC
