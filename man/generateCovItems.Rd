@@ -18,16 +18,24 @@ generateCovItems(df, numItems, th = 0.5, name, ..., scale = 1,
 
 \item{...}{Not used.  Forces remaining arguments to be specified by name.}
 
-\item{scale}{the scaling constant}
+\item{scale}{a vector of scaling constants}
 
-\item{alpha}{item discrimination}
+\item{alpha}{a vector of item discriminations}
+}
+\value{
+The given data.frame \code{df} with additional columns for each item.
+In addition, you can obtain the correlation matrix used
+to generate the latent worths from \code{attr(df, "cor")} and
+and latent worths from \code{attr(df, "worth")}.
 }
 \description{
 If you need access to the correlation matrix used to generate the
 absolute latent scores then you will need to generate them yourself.
 This is not difficult. See how in the example.
 }
-\details{
+\section{Response model}{
+
+
 The paired comparison item response model has thresholds and a
 scale parameter similar to the partial credit model (Masters,
 1982). The model is cumbersome to describe in traditional
@@ -51,8 +59,8 @@ The function \code{cmp_probs} takes a \code{scale} constant,
 from the previous threshold. For example, thresholds c(0.5, 0.5)
 are not at the same location but are at locations c(0.5,
 1.0). Thresholds are symmetric. If there is one threshold then the
-model admits three possible response outcomes (e.g. win, tie, and
-lose). Responses are always stored centered with zero representing
+model admits three possible response outcomes (e.g. \emph{win}, \emph{tie}, and
+\emph{lose}). Responses are always stored centered with zero representing
 a tie. Therefore, it is necessary to add one plus the number of
 thresholds to response data to index into the vector returned by
 \code{cmp_probs}. For example, if our response data is (-1, 0, 1)
@@ -60,13 +68,14 @@ and has one threshold then we would add 2 (1 + 1 threshold) to
 obtain the indices (1, 2, 3).
 
 Use \code{\link{itemModelExplorer}} to explore the item model. In
-this \pkg{shiny} app, the \emph{discrimination} parameter does what is
-customary in item response models. However, it is not difficult to
-show that discrimination is a function of thresholds and
-scale. That is, discrimination is not an independent parameter and
-cannot be estimated. In paired comparison models, discrimination
-and measurement error are confounded.
+this \pkg{shiny} app, the \emph{discrimination} parameter does what
+is customary in item response models. However, it is not difficult
+to show that discrimination is a function of thresholds and
+scale. That is, discrimination is not an independent parameter.  In
+paired comparison models, discrimination and measurement error are
+confounded.
 }
+
 \examples{
 library(mvtnorm)
 df <- twoLevelGraph(letters[1:10], 100)
@@ -79,6 +88,7 @@ trueCor <- cov2cor(rWishart(1, numItems, diag(numItems))[,,1])
 theta <- rmvnorm(length(palist), sigma=trueCor)
 dimnames(theta) <- list(palist, paste0('i', 3 + 1:numItems))
 df <- generateItem(df, theta)
+attr(df, "cor")
 
 }
 \references{
@@ -87,6 +97,7 @@ Psychometrika, 47, 149–174. doi: 10.1007/BF02296272
 }
 \seealso{
 Other item generators: \code{\link{generateFactorItems}},
-  \code{\link{generateItem}}
+  \code{\link{generateItem}},
+  \code{\link{generateSingleFactorItems}}
 }
 \concept{item generators}

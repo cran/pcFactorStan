@@ -2,16 +2,17 @@
 % Please edit documentation in R/generate.R
 \name{generateFactorItems}
 \alias{generateFactorItems}
-\title{Generate paired comparison data with a common factor that
-accounts for some proportion of the variance}
+\title{Generate paired comparison data for a factor model}
 \usage{
-generateFactorItems(df, prop, th = 0.5, name, ..., scale = 1,
-  alpha = 1)
+generateFactorItems(df, path, factorScalePrior, th = 0.5, name, ...,
+  scale = 1, alpha = 1)
 }
 \arguments{
 \item{df}{a data frame with pairs of vertices given in columns \code{pa1} and \code{pa2}, and item response data in other columns}
 
-\item{prop}{the number of items or a vector of signed proportions of variance}
+\item{path}{a named list of item names}
+
+\item{factorScalePrior}{a named numeric vector}
 
 \item{th}{a vector of thresholds}
 
@@ -19,20 +20,40 @@ generateFactorItems(df, prop, th = 0.5, name, ..., scale = 1,
 
 \item{...}{Not used.  Forces remaining arguments to be specified by name.}
 
-\item{scale}{the scaling constant}
+\item{scale}{a vector of scaling constants}
 
-\item{alpha}{item discrimination}
+\item{alpha}{a vector of item discriminations}
+}
+\value{
+The given data.frame \code{df} with additional columns for each item.
+In addition, you can obtain path proportions (factor-to-item loadings) from \code{attr(df, "pathProp")},
+the factor scores from \code{attr(df, "score")},
+and latent worths from \code{attr(df, "worth")}.
 }
 \description{
-Imagine that there are people that play in tournaments of more than
-one board game. For example, the computer player AlphaZero (Silver
-et al. 2018) has trained to play chess, shogi, and Go. We can take
-the tournament match outcome data and find rankings among the
-players for each of these games. We may also suspect that there is
-a latent board game skill that accounts for some proportion of the
-variance in the per-board game rankings.
+Generate paired comparison data given a mapping from factors to items.
 }
 \details{
+For each factor, you need to specify its name, which items it predicts, and its scale prior.
+The connections from factors to items is specified by the `path` argument.
+The scale priors are given in the `factorScalePrior` argument.
+Both factors and items are specified by name (not index).
+The example shows how everything fits together.
+Paths are ordered as given in the `path` argument.
+
+The units of `factorScalePrior` is a standard deviation of the
+normal prior for the logit transformed factor proportion.
+
+Path proportions (factor-to-item loadings) are sampled
+  from a logistic transformed normal distribution with scale
+  \code{factorScalePrior}. A few attempts are made to resample path
+  proportions if any of the item proportions sum to more than
+  1.0. An exception will be raised if repeated attempts fail to
+  produce viable proportion assignments.
+}
+\section{Response model}{
+
+
 The paired comparison item response model has thresholds and a
 scale parameter similar to the partial credit model (Masters,
 1982). The model is cumbersome to describe in traditional
@@ -56,8 +77,8 @@ The function \code{cmp_probs} takes a \code{scale} constant,
 from the previous threshold. For example, thresholds c(0.5, 0.5)
 are not at the same location but are at locations c(0.5,
 1.0). Thresholds are symmetric. If there is one threshold then the
-model admits three possible response outcomes (e.g. win, tie, and
-lose). Responses are always stored centered with zero representing
+model admits three possible response outcomes (e.g. \emph{win}, \emph{tie}, and
+\emph{lose}). Responses are always stored centered with zero representing
 a tie. Therefore, it is necessary to add one plus the number of
 thresholds to response data to index into the vector returned by
 \code{cmp_probs}. For example, if our response data is (-1, 0, 1)
@@ -65,16 +86,32 @@ and has one threshold then we would add 2 (1 + 1 threshold) to
 obtain the indices (1, 2, 3).
 
 Use \code{\link{itemModelExplorer}} to explore the item model. In
-this \pkg{shiny} app, the \emph{discrimination} parameter does what is
-customary in item response models. However, it is not difficult to
-show that discrimination is a function of thresholds and
-scale. That is, discrimination is not an independent parameter and
-cannot be estimated. In paired comparison models, discrimination
-and measurement error are confounded.
+this \pkg{shiny} app, the \emph{discrimination} parameter does what
+is customary in item response models. However, it is not difficult
+to show that discrimination is a function of thresholds and
+scale. That is, discrimination is not an independent parameter.  In
+paired comparison models, discrimination and measurement error are
+confounded.
 }
+
+\section{Backward incompatibility}{
+
+The function \link{generateFactorItems} was renamed to
+  \code{generateSingleFactorItems} (version 1.1.0) to make space for a more
+  flexible factor model with an arbitrary number of factors and
+  arbitrary factor-to-item loading pattern. If you don't need this
+  flexibility, you can call the old function \link{generateSingleFactorItems}.
+}
+
 \examples{
 df <- twoLevelGraph(letters[1:10], 100)
-df <- generateFactorItems(df, 3)
+df <- generateFactorItems(df, list(f1=paste0('i',1:4),
+                           f2=paste0('i',2:4)),
+                      c(f1=0.9, f2=0.5))
+head(df)
+attr(df, "pathProp")
+attr(df, "score")
+attr(df, "worth")
 }
 \references{
 Masters, G. N. (1982). A Rasch model for partial credit scoring.
@@ -86,7 +123,10 @@ learning algorithm that masters chess, shogi, and Go through
 self-play. Science, 362(6419), 1140-1144.
 }
 \seealso{
+To fit a factor model: \link{prepFactorModel}
+
 Other item generators: \code{\link{generateCovItems}},
-  \code{\link{generateItem}}
+  \code{\link{generateItem}},
+  \code{\link{generateSingleFactorItems}}
 }
 \concept{item generators}

@@ -20,6 +20,8 @@
 #' normalizeData(df)
 #' @export
 normalizeData <- function(df, ..., .palist=NULL, .sortRows=TRUE) {
+  if (length(list(...)) > 0) stop("Rejected are any values passed in the '...' argument")
+
   palist <- verifyIsData(df)
   if (!is.null(.palist)) {
     if (length(palist) != length(.palist)) {
@@ -57,8 +59,7 @@ normalizeData <- function(df, ..., .palist=NULL, .sortRows=TRUE) {
 #'
 #' @template args-df
 #'
-#' @return a data list suitable for passing as the \code{data}
-#'   argument to \code{\link{pcStan}} or \code{\link[rstan]{stan}}
+#' @template return-datalist
 #' @family data preppers
 #' @examples
 #' df <- prepCleanData(phyActFlowPropensity)
@@ -142,8 +143,7 @@ prepCleanData <- function(df) {
 #' grouped together.  Within a vertex pair and item, responses
 #' are ordered from negative to positive.
 #'
-#' @return a data list suitable for passing as the \code{data}
-#'   argument to \code{\link{pcStan}} or \code{\link[rstan]{stan}}
+#' @template return-datalist
 #' @family data preppers
 #' @examples
 #' df <- prepData(phyActFlowPropensity)
@@ -191,6 +191,12 @@ verifyIsPreppedData <- function(data) {
 #' varCorrection constant. In general, a varCorrection of 2.0 or 3.0
 #' should provide optimal results.
 #'
+#' Since version 1.1.0, the factor model permits an arbitrary number
+#' of factors and arbitrary factor-to-item paths. If you were using
+#' the old factor model, you'll need to update your code to call
+#' \link{prepSingleFactorModel}. Arbitrary factor model structure
+#' should be specified using \link{prepFactorModel}.
+#'
 #' @return An instance of S4 class \code{\link[rstan:stanmodel-class]{stanmodel}} that can be passed to \code{\link{pcStan}}.
 #' @seealso \code{\link{toLoo}}
 #' @template ref-vehtari2017
@@ -212,6 +218,72 @@ findModel <- function(model=NULL) {
   }
 
   obj
+}
+
+#' Specify a single factor model
+#'
+#' Specify a single latent factor with a path to each item.
+#'
+#' @param factorScalePrior standard deviation of the normal prior for the logit transformed factor proportion
+#' @template args-data
+#' @template return-datalist
+#' @examples
+#' dl <- prepData(phyActFlowPropensity)
+#' dl <- prepSingleFactorModel(dl, 0.9)
+#' str(dl)
+#' @family factor model
+#' @family data preppers
+#' @export
+prepSingleFactorModel <- function(data, factorScalePrior) {
+  verifyIsPreppedData(data)
+  data$factorScalePrior <- as.array(factorScalePrior)
+  ni <- data$NITEMS
+  data$factorItemPath <- matrix(c(rep(1,ni), 1:ni), nrow=2, byrow=TRUE)
+  data$NFACTORS <- 1L
+  data$NPATHS <- ni
+  data
+}
+
+#' Specify a factor model
+#'
+#' Specify a factor model with an arbitrary number of factors and
+#' arbitrary factor-to-item structure.
+#'
+#' @template detail-factorspec
+#' @template args-path
+#' @template args-factorScalePrior
+#' @template args-data
+#' @template return-datalist
+#' @examples
+#' pa <- phyActFlowPropensity[,setdiff(colnames(phyActFlowPropensity),
+#'                                     c('goal1','feedback1'))]
+#' dl <- prepData(pa)
+#' dl <- prepFactorModel(dl,
+#'                       list(flow=c('complex','skill','predict',
+#'                                   'creative', 'novelty', 'stakes',
+#'                                   'present', 'reward', 'chatter',
+#'                                   'body'),
+#'                            f2=c('waiting','control','evaluated','spont'),
+#'                            rc=c('novelty', 'waiting')),
+#'                       c(flow=0.9, f2=0.5, rc=0.2))
+#' str(dl)
+#' @family factor model
+#' @family data preppers
+#' @seealso To simulate data from a factor model: \link{generateFactorItems}
+#' @export
+prepFactorModel <- function(data, path, factorScalePrior) {
+  verifyIsPreppedData(data)
+  items <- data$nameInfo$item
+  validateFactorModel(items, path, factorScalePrior)
+  itemsPerFactor <- sapply(path, length)
+  data$factorScalePrior <- as.array(unname(factorScalePrior[names(path)]))
+  data$factorItemPath <- matrix(c(rep(1:length(itemsPerFactor), itemsPerFactor),
+                                  unlist(lapply(path, function(x) match(x, items)))),
+                                nrow=2, byrow=TRUE)
+  data$NFACTORS <- length(factorScalePrior)
+  data$NPATHS <- sum(itemsPerFactor)
+  data$nameInfo[['factor']] <- names(path)
+  data
 }
 
 #' Fit a paired comparison Stan model

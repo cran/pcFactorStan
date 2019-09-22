@@ -59,15 +59,19 @@ assertNameUnused <- function(df, name) {
 #' variance in the per-board game rankings.
 #'
 #' @template detail-response
+#' @template detail-genfactor
+#' 
 #' @template ref-masters1982
 #' @template ref-silver2018
+#' @return
+#' The given data.frame \code{df} with additional columns for each item.
 #' @family item generators
 #' @examples
 #' df <- twoLevelGraph(letters[1:10], 100)
-#' df <- generateFactorItems(df, 3)
+#' df <- generateSingleFactorItems(df, 3)
 #' @export
 #' @importFrom stats rnorm sd rbinom rbeta
-generateFactorItems <- function(df, prop, th=0.5, name, ..., scale=1, alpha=1) {
+generateSingleFactorItems <- function(df, prop, th=0.5, name, ..., scale=1, alpha=1) {
   palist <- verifyIsData(df)
   if (length(prop) == 1) {
     if (prop < 3) stop(paste0("At least 3 indicators are required (", prop," requested)"))
@@ -101,6 +105,151 @@ generateFactorItems <- function(df, prop, th=0.5, name, ..., scale=1, alpha=1) {
   generateItem(df, theta, th, scale=scale, alpha=alpha)
 }
 
+validateFactorModel <- function(items, path, factorScalePrior) {
+  if (length(path) == 0) stop("No paths specified")
+  n1 <- names(path)
+  n2 <- names(factorScalePrior)
+  if (length(n1) == 0) {
+    stop("paths must be named, the name is the name of the factor")
+  }
+  if (length(n2) == 0) {
+    stop("factorScalePrior must be named, the name is the name of the factor")
+  }
+  if (length(n1) != length(n2)) {
+    stop(paste("Number of factors mismatch between path",
+               length(path),"and factorScalePrior",
+               length(factorScalePrior)))
+  }
+  if (!setequal(n1, n2)) {
+    stop("path and factorScalePrior specify different factor names")
+  }
+  itemsPerFactor <- sapply(path, length)
+  if (any(itemsPerFactor < 2)) {
+    stop(paste("Some factors have less than 2 indicators:",
+               paste(names(itemsPerFactor)[itemsPerFactor<2],
+                     collapse=", ")))
+  }
+  indicators <- Reduce(union, path, c())
+  noItem <- is.na(match(indicators, items))
+  if (any(noItem)) {
+    stop(paste("No matching item for factor indicator(s):",
+               paste(indicators[noItem], collapse=", ")))
+  }
+  noIndicator <- is.na(match(items, indicators))
+  if (any(noIndicator)) {
+    stop(paste("No factor predicts item(s):",
+               paste(items[noIndicator], collapse=", ")))
+  }
+}
+
+ssqrt <- function(v) sign(v)*sqrt(abs(v))
+
+#' Generate paired comparison data for a factor model
+#'
+#' @template args-path
+#' @template args-factorScalePrior
+#' @inheritParams generateItem
+#' @description
+#' Generate paired comparison data given a mapping from factors to items.
+#'
+#' @template detail-factorspec
+#' 
+#' @details Path proportions (factor-to-item loadings) are sampled
+#'   from a logistic transformed normal distribution with scale
+#'   \code{factorScalePrior}. A few attempts are made to resample path
+#'   proportions if any of the item proportions sum to more than
+#'   1.0. An exception will be raised if repeated attempts fail to
+#'   produce viable proportion assignments.
+#' 
+#' @template detail-response
+#' @template detail-genfactor
+#' 
+#' @template ref-masters1982
+#' @template ref-silver2018
+#' @family item generators
+#' @return
+#' The given data.frame \code{df} with additional columns for each item.
+#' In addition, you can obtain path proportions (factor-to-item loadings) from \code{attr(df, "pathProp")},
+#' the factor scores from \code{attr(df, "score")},
+#' and latent worths from \code{attr(df, "worth")}.
+#' 
+#' @seealso To fit a factor model: \link{prepFactorModel}
+#' @examples
+#' df <- twoLevelGraph(letters[1:10], 100)
+#' df <- generateFactorItems(df, list(f1=paste0('i',1:4),
+#'                            f2=paste0('i',2:4)),
+#'                       c(f1=0.9, f2=0.5))
+#' head(df)
+#' attr(df, "pathProp")
+#' attr(df, "score")
+#' attr(df, "worth")
+#' @export
+#' @importFrom stats rnorm sd plogis rbinom
+generateFactorItems <- function(df, path, factorScalePrior, th=0.5, name, ..., scale=1, alpha=1) {
+  palist <- verifyIsData(df)
+  items <- Reduce(union, path, c())
+  numItems <- length(items)
+  if (missing(name)) {
+    num <- ncol(df)-1
+    name <- paste0('i', num:(num+numItems-1))
+  }
+  assertNameUnused(df, name)
+  validateFactorModel(items, path, factorScalePrior)
+
+  numFactors <- length(path)
+  itemsPerFactor <- sapply(path, length)
+  factorItemPath <- matrix(c(rep(1:length(itemsPerFactor), itemsPerFactor),
+                             unlist(lapply(path, function(x) match(x, items)))),
+                           nrow=2, byrow=TRUE)
+  prop <- matrix(0, ncol=numItems, nrow=numFactors+1)
+  propTry <- 1L
+  while(1) {
+    for (fx in 1:numFactors) {
+      sel <- factorItemPath[1,]==fx
+      prop[fx+1, factorItemPath[2,sel]] <-
+        2*(plogis(abs(rnorm(sum(factorItemPath[1,]==fx),
+                            sd=factorScalePrior[fx]))) - 0.5)
+    }
+    if (all(colSums(prop) < .99)) break
+    propTry <- propTry + 1L
+    if (propTry > 10L) stop("factorScalePrior is too large")
+  }
+  prop[1,] <- 1 - colSums(prop)
+
+  # random sign
+  prop <- prop * matrix((2*rbinom(prod(dim(prop)), 1, .5)-1),
+                        nrow(prop), ncol(prop))
+  for (fx in 1:numFactors) {
+    c <- which(prop[1+fx,]!=0)[1]
+    prop[1+fx, c] <- abs(prop[1+fx, c])
+  }
+
+  theta <- matrix(0, nrow=length(palist), ncol=numItems)
+  for (ix in 1:numItems) {
+    theta[,ix] <- ssqrt(prop[1,ix]) * c(scale(rnorm(length(palist))))
+  }
+
+  ftheta <- matrix(0, nrow=length(palist), ncol=numFactors)
+  for (fx in 1:numFactors) {
+    ftheta[,fx] <- c(scale(rnorm(length(palist))))
+  }
+  for (px in 1:ncol(factorItemPath)) {
+    fx <- factorItemPath[1,px]
+    ix <- factorItemPath[2,px]
+    theta[,ix] <- theta[,ix] + ftheta[,fx] * ssqrt(prop[1+fx,ix])
+  }
+
+  theta <- scale(theta)
+  dimnames(theta) <- list(palist, name)
+  df <- generateItem(df, theta, th, scale=scale, alpha=alpha)
+  pathProp <- mapply(function(r,c,x) x[r,c],
+                     1+factorItemPath[1,], factorItemPath[2,], MoreArgs = list(prop))
+  attr(df, "pathProp") <- pathProp
+  attr(df, "score") <- ftheta
+  attr(df, "worth") <- theta
+  df
+}
+
 #' Generate paired comparison data with random correlations between items
 #'
 #' @inheritParams generateItem
@@ -114,6 +263,12 @@ generateFactorItems <- function(df, prop, th=0.5, name, ..., scale=1, alpha=1) {
 #' @template detail-response
 #' @template ref-masters1982
 #' @family item generators
+#' @return
+#' The given data.frame \code{df} with additional columns for each item.
+#' In addition, you can obtain the correlation matrix used
+#' to generate the latent worths from \code{attr(df, "cor")} and
+#' and latent worths from \code{attr(df, "worth")}.
+#' 
 #' @examples
 #' library(mvtnorm)
 #' df <- twoLevelGraph(letters[1:10], 100)
@@ -126,6 +281,7 @@ generateFactorItems <- function(df, prop, th=0.5, name, ..., scale=1, alpha=1) {
 #' theta <- rmvnorm(length(palist), sigma=trueCor)
 #' dimnames(theta) <- list(palist, paste0('i', 3 + 1:numItems))
 #' df <- generateItem(df, theta)
+#' attr(df, "cor")
 #'
 #' @export
 #' @importFrom mvtnorm rmvnorm
@@ -141,7 +297,10 @@ generateCovItems <- function(df, numItems, th=0.5, name, ..., scale=1, alpha=1) 
   trueCor <- cov2cor(rWishart(1, numItems, diag(numItems))[,,1])
   theta <- rmvnorm(length(palist), sigma=trueCor)
   dimnames(theta) <- list(palist, name)
-  generateItem(df, theta, th, scale=scale, alpha=alpha)
+  df <- generateItem(df, theta, th, scale=scale, alpha=alpha)
+  attr(df, "cor") <- trueCor
+  attr(df, "worth") <- theta
+  df
 }
 
 #' Generate paired comparison data for one or more items given
@@ -152,8 +311,8 @@ generateCovItems <- function(df, numItems, th=0.5, name, ..., scale=1, alpha=1) 
 #' @param th a vector of thresholds
 #' @param name a vector of item names
 #' @template args-dots-barrier
-#' @param scale the scaling constant
-#' @param alpha item discrimination
+#' @param scale a vector of scaling constants
+#' @param alpha a vector of item discriminations
 #'
 #' @description
 #' To add a single item, \code{theta} should be a vector of latent
@@ -175,11 +334,14 @@ generateCovItems <- function(df, numItems, th=0.5, name, ..., scale=1, alpha=1) 
 #' @template detail-response
 #' @template ref-masters1982
 #' @family item generators
+#' @return
+#' The given data.frame \code{df} with additional columns for each item.
 #' @examples
 #' df <- roundRobinGraph(letters[1:5], 40)
 #' df <- generateItem(df)
 #' @export
 generateItem <- function(df, theta, th=0.5, name, ..., scale=1, alpha=1) {
+  if (length(list(...)) > 0) stop("Rejected are any values passed in the '...' argument")
   if (!missing(theta) && is.matrix(theta)) {
     if (length(colnames(theta))) {
       if (!missing(name)) {
@@ -327,7 +489,7 @@ twoLevelGraph <- function(name, N, shape1=0.8, shape2=0.5) {
 #'
 #' @description
 #'
-#' Vertices not part of the largest connected component are excluded.
+#' Vertices not part of the largest connected component are excluded (Hopcroft & Tarjan, 1973).
 #' Vertices that have fewer than \code{minAny} edges and are not
 #' connected to \code{minDifferent} or more different vertices are
 #' excluded. For example, vertex \sQuote{a} connected to vertices
@@ -352,6 +514,10 @@ twoLevelGraph <- function(name, N, shape1=0.8, shape2=0.5) {
 #'   vertices.
 #'
 #' @importFrom igraph graph_from_edgelist components incident
+#' @references
+#' Hopcroft, J., & Tarjan, R. (1973). Algorithm 447: Efficient algorithms for graph
+#' manipulation. \emph{Communications of the ACM, 16}(6), 372–378.
+#' doi:10.1145/362248.362272
 #' @examples
 #' df <- filterGraph(phyActFlowPropensity[,c(paste0('pa',1:2),'predict')])
 #' head(df)

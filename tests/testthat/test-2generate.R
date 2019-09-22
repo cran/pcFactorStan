@@ -7,6 +7,8 @@ suppressWarnings(RNGversion("3.5"))
 test_that("generateItem", {
   set.seed(1)
   df <- roundRobinGraph(letters[1:5], 40)
+  expect_error(generateItem(df, bob="whatever"),
+               "Rejected are any values passed")
   df <- generateItem(df)
   expect_equivalent(c(table(df$i1)), c(7,17,16))
 
@@ -54,10 +56,10 @@ test_that("generateCovItems", {
                "Colname i4 is already taken.")
 })
 
-test_that("generateFactorItems", {
+test_that("generateSingleFactorItems", {
   set.seed(1)
   df <- twoLevelGraph(letters[1:10], 100)
-  df <- generateFactorItems(df, 3)
+  df <- generateSingleFactorItems(df, 3)
 
   # This is a nonsensical way to look at the data.
   # Just ensure that nothing has changed.
@@ -66,10 +68,30 @@ test_that("generateFactorItems", {
                c(0.624, 0.142, 0.009, 0.644, -0.221, 0.579),
                tolerance=1e-3, scale=1)
 
-  expect_error(generateFactorItems(df, 1),
+  expect_error(generateSingleFactorItems(df, 1),
                "At least 3 indicators are required")
-  expect_error(generateFactorItems(df, c(.3,.4)),
+  expect_error(generateSingleFactorItems(df, c(.3,.4)),
                "At least 3 indicators are required")
-  expect_error(generateFactorItems(df, c(1.3,.4,.4)),
+  expect_error(generateSingleFactorItems(df, c(1.3,.4,.4)),
                "Signed proportions must be between -1 and 1")
+})
+
+test_that("generateFactorItems", {
+  set.seed(1)
+  df <- twoLevelGraph(letters[1:10], 100)
+  df <- generateFactorItems(df, list(f1=paste0('i',1:4),
+                                     f2=paste0('i',2:4)),
+                            c(f1=0.9, f2=0.5))
+  # This is a nonsensical way to look at the data.
+  # Just ensure that nothing has changed.
+  c1 <- cov(df[,paste0('i',1:4)])
+  expect_equal(c1[lower.tri(c1, diag = TRUE)],
+               c(0.657, -0.031, -0.055, -0.042, 0.652, 0.073, 0.043,
+                 0.602,  -0.021, 0.563),
+               tolerance=1e-3, scale=1)
+
+  expect_error(generateFactorItems(df, list(f1=paste0('i',1:4),
+                                     f2=paste0('i',2:4)),
+                            c(f1=100, f2=100)),
+               "factorScalePrior is too large")
 })

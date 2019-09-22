@@ -30,6 +30,8 @@ df <- prepCleanData(phyActFlowPropensity)
 str(df)
 }
 \seealso{
-Other data preppers: \code{\link{prepData}}
+Other data preppers: \code{\link{prepData}},
+  \code{\link{prepFactorModel}},
+  \code{\link{prepSingleFactorModel}}
 }
 \concept{data preppers}

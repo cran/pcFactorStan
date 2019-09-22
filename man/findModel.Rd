@@ -32,6 +32,12 @@ an appropriate scaling constant, we recommend fitting
 median of median point estimates to set the scale. \sQuote{unidim_adapt} requires a
 varCorrection constant. In general, a varCorrection of 2.0 or 3.0
 should provide optimal results.
+
+Since version 1.1.0, the factor model permits an arbitrary number
+of factors and arbitrary factor-to-item paths. If you were using
+the old factor model, you'll need to update your code to call
+\link{prepSingleFactorModel}. Arbitrary factor model structure
+should be specified using \link{prepFactorModel}.
 }
 \examples{
 findModel()  # shows available models

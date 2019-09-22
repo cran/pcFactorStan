@@ -21,6 +21,7 @@ options(scipen=2)
 ## ---- message=FALSE------------------------------------------------------
 library(rstan)
 library(pcFactorStan)
+library(loo)
 
 ## ---- results='hide'-----------------------------------------------------
 head(phyActFlowPropensity)
@@ -134,11 +135,17 @@ print(alpha[alpha[,'sd']>.25,,drop=FALSE])
 ## ---- results='asis', echo=FALSE-----------------------------------------
 kable(alpha[alpha[,'sd']>.25,,drop=FALSE])
 
+## ------------------------------------------------------------------------
+factorProportion <- .3
+factorScalePrior <- .9
+dnorm(qlogis(0.5 + factorProportion/2), sd=factorScalePrior)
+
 ## ----factorData1, cache=TRUE---------------------------------------------
-pafp <- pafp[,c(paste0('pa',1:2), 
+pafp <- pafp[,c(paste0('pa',1:2),
              setdiff(covItemNames, c('spont','control','evaluated','waiting')))]
 pafp <- normalizeData(filterGraph(pafp))
 dl <- prepCleanData(pafp)
+dl <- prepSingleFactorModel(dl, 1.0)
 dl$scale <- result[match(dl$nameInfo$item, result$item), 'scale']
 dl$alpha <- alpha[match(dl$nameInfo$item, rownames(alpha)), 'mean']
 
@@ -146,23 +153,30 @@ dl$alpha <- alpha[match(dl$nameInfo$item, rownames(alpha)), 'mean']
 rm(fit2)  # free up some memory
 
 ## ----factor, message=FALSE, results='hide', cache=TRUE-------------------
-fit3 <- pcStan("factor_ll", data=dl, include=FALSE, iter=3000,
-               pars=c('rawUnique', 'rawUniqueTheta', 'rawFactor', 'rawLoadings'))
+fit3 <- pcStan("factor_ll", data=dl, include=FALSE, 
+               pars=c('rawUnique', 'rawUniqueTheta', 'rawPerComponentVar',
+	       'rawFactor', 'rawLoadings', 'rawFactorProp', 'rawNegateFactor', 'rawSeenFactor',
+	       'unique', 'uniqueTheta'))
 
 ## ----factorDiag1, cache=TRUE---------------------------------------------
-check_hmc_diagnostics(fit3) 
+check_hmc_diagnostics(fit3)
 
-interest <- c("threshold", "factorLoadings",  "factorProp", "factor",
- "unique", "uniqueTheta", "lp__")
+interest <- c("threshold", "pathProp", "factor", "lp__", "log_lik")
 
 allPars <- summary(fit3, pars=interest)$summary
 print(min(allPars[,'n_eff']))
 print(max(allPars[,'Rhat']))
 
 ## ----factorLoo, cache=TRUE-----------------------------------------------
-options(mc.cores=1)  # otherwise loo consumes too much RAM 
+options(mc.cores=1)  # otherwise loo consumes too much RAM
+kThreshold <- 0.4
 l1 <- toLoo(fit3) 
-kThreshold <- 0.3
+print(l1)
+
+## ----results='hide', echo=FALSE------------------------------------------
+if (sum(pareto_k_values(l1)>.5) == 0) stop("No outliers?!")
+
+## ------------------------------------------------------------------------
 ot <- outlierTable(dl, l1, kThreshold)
 
 ## ---- results='hide'-----------------------------------------------------
@@ -172,14 +186,14 @@ print(ot)
 kable(ot, row.names=TRUE)
 
 ## ------------------------------------------------------------------------
-xx <- which(ot[,'pa1'] == 'tennis' & ot[,'pa2'] == 'water skiing' & ot[,'item'] == 'predict' & ot[,'pick'] == -2)
+xx <- which(ot[,'pa1'] == 'calisthenics' & ot[,'pa2'] == 'sex' & ot[,'item'] == 'body' & ot[,'pick'] == -2)
 
 ## ------------------------------------------------------------------------
 pafp[pafp$pa1 == ot[xx,'pa1'] & pafp$pa2 == ot[xx,'pa2'],
      c('pa1','pa2', as.character(ot[xx,'item']))]
 
 ## ----outlier, cache=TRUE-------------------------------------------------
-loc <- sapply(ot[xx,c('pa1','pa2','item')], unfactor)
+loc <- sapply(ot[xx,c('pa1','pa2','item')], unfactor) 
 exam <- summary(fit3, pars=paste0("theta[",loc[paste0('pa',1:2)],
                           ",", loc['item'],"]"))$summary
 
@@ -191,8 +205,8 @@ kable(exam)
 sum(c(pafp$pa1 == ot[xx,'pa1'], pafp$pa2 == ot[xx,'pa1']))
 sum(c(pafp$pa1 == ot[xx,'pa2'], pafp$pa2 == ot[xx,'pa2']))
 
-## ----factorProp, cache=TRUE----------------------------------------------
-pi <- parInterval(fit3, 'factorProp', dl$nameInfo$item, label='item')
+## ----pathProp, cache=TRUE------------------------------------------------
+pi <- parInterval(fit3, 'pathProp', dl$nameInfo$item, label='item')
 pi <- pi[order(abs(pi$M)),]
 pi$item <- factor(pi$item, levels=pi$item)
 
@@ -206,8 +220,8 @@ ggplot(pi) +
   theme(axis.title.y=element_blank())
 
 ## ----activities, cache=TRUE----------------------------------------------
-pa11 <- levels(filterGraph(pafp, minDifferent=11L)$pa1)
-pick <- paste0('factor[',match(pa11, dl$nameInfo$pa),']')
+pa11 <- levels(filterGraph(pafp, minDifferent=11L)$pa1) 
+pick <- paste0('factor[',match(pa11, dl$nameInfo$pa),',1]')
 pi <- parInterval(fit3, pick, pa11, label='activity')
 pi <- pi[order(pi$M),]
 pi$activity <- factor(pi$activity, levels=pi$activity)
