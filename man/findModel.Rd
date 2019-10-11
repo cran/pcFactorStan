@@ -37,7 +37,8 @@ Since version 1.1.0, the factor model permits an arbitrary number
 of factors and arbitrary factor-to-item paths. If you were using
 the old factor model, you'll need to update your code to call
 \link{prepSingleFactorModel}. Arbitrary factor model structure
-should be specified using \link{prepFactorModel}.
+should be specified using \link{prepFactorModel}. The single factor model
+is called \sQuote{factor1} and the general factor model is called \sQuote{factor}.
 }
 \examples{
 findModel()  # shows available models

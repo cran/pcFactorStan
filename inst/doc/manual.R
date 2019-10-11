@@ -153,7 +153,7 @@ dl$alpha <- alpha[match(dl$nameInfo$item, rownames(alpha)), 'mean']
 rm(fit2)  # free up some memory
 
 ## ----factor, message=FALSE, results='hide', cache=TRUE-------------------
-fit3 <- pcStan("factor_ll", data=dl, include=FALSE, 
+fit3 <- pcStan("factor1_ll", data=dl, include=FALSE,
                pars=c('rawUnique', 'rawUniqueTheta', 'rawPerComponentVar',
 	       'rawFactor', 'rawLoadings', 'rawFactorProp', 'rawNegateFactor', 'rawSeenFactor',
 	       'unique', 'uniqueTheta'))
@@ -161,7 +161,7 @@ fit3 <- pcStan("factor_ll", data=dl, include=FALSE,
 ## ----factorDiag1, cache=TRUE---------------------------------------------
 check_hmc_diagnostics(fit3)
 
-interest <- c("threshold", "pathProp", "factor", "lp__", "log_lik")
+interest <- c("threshold", "pathProp", "factor", "lp__")
 
 allPars <- summary(fit3, pars=interest)$summary
 print(min(allPars[,'n_eff']))
@@ -169,24 +169,26 @@ print(max(allPars[,'Rhat']))
 
 ## ----factorLoo, cache=TRUE-----------------------------------------------
 options(mc.cores=1)  # otherwise loo consumes too much RAM
-kThreshold <- 0.4
+kThreshold <- 0.3
 l1 <- toLoo(fit3) 
 print(l1)
 
-## ----results='hide', echo=FALSE------------------------------------------
-if (sum(pareto_k_values(l1)>.5) == 0) stop("No outliers?!")
-
 ## ------------------------------------------------------------------------
+pa11 <- levels(filterGraph(pafp, minDifferent=11L)$pa1)
 ot <- outlierTable(dl, l1, kThreshold)
+ot <- subset(ot, pa1 %in% pa11 & pa2 %in% pa11)
 
 ## ---- results='hide'-----------------------------------------------------
-print(ot)
+print(ot[1:6,])
 
 ## ---- results='asis', echo=FALSE-----------------------------------------
-kable(ot, row.names=TRUE)
+kable(ot[1:6,], row.names=TRUE)
 
-## ------------------------------------------------------------------------
-xx <- which(ot[,'pa1'] == 'calisthenics' & ot[,'pa2'] == 'sex' & ot[,'item'] == 'body' & ot[,'pick'] == -2)
+## ---- results='hide'-----------------------------------------------------
+xx <- which(ot[,'pa1'] == 'mountain biking' & ot[,'pa2'] == 'climbing' & ot[,'item'] == 'predict' & ot[,'pick'] == -2)
+
+## ---- results='asis', echo=FALSE-----------------------------------------
+kable(ot[xx,,drop=FALSE], row.names=TRUE)
 
 ## ------------------------------------------------------------------------
 pafp[pafp$pa1 == ot[xx,'pa1'] & pafp$pa2 == ot[xx,'pa2'],
@@ -196,6 +198,7 @@ pafp[pafp$pa1 == ot[xx,'pa1'] & pafp$pa2 == ot[xx,'pa2'],
 loc <- sapply(ot[xx,c('pa1','pa2','item')], unfactor) 
 exam <- summary(fit3, pars=paste0("theta[",loc[paste0('pa',1:2)],
                           ",", loc['item'],"]"))$summary
+rownames(exam) <- c(as.character(ot[xx,'pa1']), as.character(ot[xx,'pa2']))
 
 ## ---- results='asis', echo=FALSE-----------------------------------------
 #exam <- data.frame(mean=c(0,0), '2.5%'=c(0,0), '97.5%'=c(0,0))
@@ -220,7 +223,6 @@ ggplot(pi) +
   theme(axis.title.y=element_blank())
 
 ## ----activities, cache=TRUE----------------------------------------------
-pa11 <- levels(filterGraph(pafp, minDifferent=11L)$pa1) 
 pick <- paste0('factor[',match(pa11, dl$nameInfo$pa),',1]')
 pi <- parInterval(fit3, pick, pa11, label='activity')
 pi <- pi[order(pi$M),]

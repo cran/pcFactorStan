@@ -195,7 +195,8 @@ verifyIsPreppedData <- function(data) {
 #' of factors and arbitrary factor-to-item paths. If you were using
 #' the old factor model, you'll need to update your code to call
 #' \link{prepSingleFactorModel}. Arbitrary factor model structure
-#' should be specified using \link{prepFactorModel}.
+#' should be specified using \link{prepFactorModel}. The single factor model
+#' is called \sQuote{factor1} and the general factor model is called \sQuote{factor}.
 #'
 #' @return An instance of S4 class \code{\link[rstan:stanmodel-class]{stanmodel}} that can be passed to \code{\link{pcStan}}.
 #' @seealso \code{\link{toLoo}}
@@ -249,15 +250,27 @@ prepSingleFactorModel <- function(data, factorScalePrior) {
 #' Specify a factor model with an arbitrary number of factors and
 #' arbitrary factor-to-item structure.
 #'
+#' @details Both \code{factorScalePrior} and \code{psiScalePrior} are
+#'   in the same units. A logistic transformation is applied to the
+#'   signed proportion or correlation such that the parameter value
+#'   becomes an unbounded real. The prior is a zero mean normal on
+#'   this value with the given standard deviation.
+#'
 #' @template detail-factorspec
 #' @template args-path
 #' @template args-factorScalePrior
 #' @template args-data
+#' @param psiScalePrior matrix of priors for factor correlations
 #' @template return-datalist
 #' @examples
 #' pa <- phyActFlowPropensity[,setdiff(colnames(phyActFlowPropensity),
 #'                                     c('goal1','feedback1'))]
 #' dl <- prepData(pa)
+#' psi <- diag(3)
+#' psi[lower.tri(psi)] <- runif(3, 0, .8)
+#' psi[upper.tri(psi)] <- t(psi)[upper.tri(psi)]
+#' fname <- c('flow','f2','rc')
+#' dimnames(psi) <- list(fname, fname)
 #' dl <- prepFactorModel(dl,
 #'                       list(flow=c('complex','skill','predict',
 #'                                   'creative', 'novelty', 'stakes',
@@ -265,13 +278,14 @@ prepSingleFactorModel <- function(data, factorScalePrior) {
 #'                                   'body'),
 #'                            f2=c('waiting','control','evaluated','spont'),
 #'                            rc=c('novelty', 'waiting')),
-#'                       c(flow=0.9, f2=0.5, rc=0.2))
+#'                       c(flow=0.9, f2=0.5, rc=0.2), psi)
 #' str(dl)
 #' @family factor model
 #' @family data preppers
 #' @seealso To simulate data from a factor model: \link{generateFactorItems}
 #' @export
-prepFactorModel <- function(data, path, factorScalePrior) {
+prepFactorModel <- function(data, path, factorScalePrior,
+                            psiScalePrior=NULL) {
   verifyIsPreppedData(data)
   items <- data$nameInfo$item
   validateFactorModel(items, path, factorScalePrior)
@@ -281,6 +295,27 @@ prepFactorModel <- function(data, path, factorScalePrior) {
                                   unlist(lapply(path, function(x) match(x, items)))),
                                 nrow=2, byrow=TRUE)
   data$NFACTORS <- length(factorScalePrior)
+  if (length(path) > 1) {
+    if (missing(psiScalePrior)) {
+      stop("Specify psiScalePrior for correlations between factors")
+    }
+    if (length(colnames(psiScalePrior)) != length(path)) {
+      stop("psiScalePrior must have dimnames")
+    }
+    if (any(colnames(psiScalePrior) != rownames(psiScalePrior))) {
+      stop("psiScalePrior must have identical row and column names")
+    }
+    if (any(psiScalePrior != t(psiScalePrior))) {
+      stop("psiScalePrior must be symmetric")
+    }
+    sel <- match(names(path), colnames(psiScalePrior))
+    if (any(is.na(sel))) {
+      stop(paste("psiScalePrior does not mention some factors:", names(path)[is.na(sel)]))
+    }
+    psp <- psiScalePrior[sel,sel]
+    data$NPSI <- data$NFACTORS * (data$NFACTORS - 1) / 2;
+    data$psiScalePrior <- as.array(psp[lower.tri(psp)])
+  }
   data$NPATHS <- sum(itemsPerFactor)
   data$nameInfo[['factor']] <- names(path)
   data
