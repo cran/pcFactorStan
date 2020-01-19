@@ -28,8 +28,9 @@ str(df)
 
 }
 \seealso{
-Other data preppers: \code{\link{prepCleanData}},
-  \code{\link{prepFactorModel}},
-  \code{\link{prepSingleFactorModel}}
+Other data preppers: 
+\code{\link{prepCleanData}()},
+\code{\link{prepFactorModel}()},
+\code{\link{prepSingleFactorModel}()}
 }
 \concept{data preppers}

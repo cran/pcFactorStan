@@ -159,7 +159,7 @@ fit3 <- pcStan("factor1_ll", data=dl, include=FALSE,
 	       'unique', 'uniqueTheta'))
 
 ## ----factorDiag1, cache=TRUE---------------------------------------------
-check_hmc_diagnostics(fit3)
+check_hmc_diagnostics(fit3) 
 
 interest <- c("threshold", "pathProp", "factor", "lp__")
 
@@ -168,8 +168,8 @@ print(min(allPars[,'n_eff']))
 print(max(allPars[,'Rhat']))
 
 ## ----factorLoo, cache=TRUE-----------------------------------------------
-options(mc.cores=1)  # otherwise loo consumes too much RAM
-kThreshold <- 0.3
+options(mc.cores=1)  # otherwise loo consumes too much RAM 
+kThreshold <- 0.1
 l1 <- toLoo(fit3) 
 print(l1)
 
@@ -195,7 +195,7 @@ pafp[pafp$pa1 == ot[xx,'pa1'] & pafp$pa2 == ot[xx,'pa2'],
      c('pa1','pa2', as.character(ot[xx,'item']))]
 
 ## ----outlier, cache=TRUE-------------------------------------------------
-loc <- sapply(ot[xx,c('pa1','pa2','item')], unfactor) 
+loc <- sapply(ot[xx,c('pa1','pa2','item')], unfactor)
 exam <- summary(fit3, pars=paste0("theta[",loc[paste0('pa',1:2)],
                           ",", loc['item'],"]"))$summary
 rownames(exam) <- c(as.character(ot[xx,'pa1']), as.character(ot[xx,'pa2']))

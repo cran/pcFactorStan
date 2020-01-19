@@ -24,10 +24,13 @@ dl <- prepSingleFactorModel(dl, 0.9)
 str(dl)
 }
 \seealso{
-Other factor model: \code{\link{prepFactorModel}}
+Other factor model: 
+\code{\link{prepFactorModel}()}
 
-Other data preppers: \code{\link{prepCleanData}},
-  \code{\link{prepData}}, \code{\link{prepFactorModel}}
+Other data preppers: 
+\code{\link{prepCleanData}()},
+\code{\link{prepData}()},
+\code{\link{prepFactorModel}()}
 }
 \concept{data preppers}
 \concept{factor model}

@@ -4,8 +4,16 @@
 \alias{generateFactorItems}
 \title{Generate paired comparison data for a factor model}
 \usage{
-generateFactorItems(df, path, factorScalePrior, th = 0.5, name, ...,
-  scale = 1, alpha = 1)
+generateFactorItems(
+  df,
+  path,
+  factorScalePrior,
+  th = 0.5,
+  name,
+  ...,
+  scale = 1,
+  alpha = 1
+)
 }
 \arguments{
 \item{df}{a data frame with pairs of vertices given in columns \code{pa1} and \code{pa2}, and item response data in other columns}
@@ -125,8 +133,9 @@ self-play. Science, 362(6419), 1140-1144.
 \seealso{
 To fit a factor model: \link{prepFactorModel}
 
-Other item generators: \code{\link{generateCovItems}},
-  \code{\link{generateItem}},
-  \code{\link{generateSingleFactorItems}}
+Other item generators: 
+\code{\link{generateCovItems}()},
+\code{\link{generateItem}()},
+\code{\link{generateSingleFactorItems}()}
 }
 \concept{item generators}

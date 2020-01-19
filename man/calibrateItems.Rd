@@ -4,8 +4,14 @@
 \alias{calibrateItems}
 \title{Determine the optimal scale constant for a set of items}
 \usage{
-calibrateItems(df, iter = 2000L, chains = 4L, varCorrection = 3,
-  maxAttempts = 5L, ...)
+calibrateItems(
+  df,
+  iter = 2000L,
+  chains = 4L,
+  varCorrection = 3,
+  maxAttempts = 5L,
+  ...
+)
 }
 \arguments{
 \item{df}{a data frame with pairs of vertices given in columns \code{pa1} and \code{pa2}, and item response data in other columns}

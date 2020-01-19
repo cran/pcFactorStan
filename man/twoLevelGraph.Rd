@@ -33,6 +33,7 @@ shape2} or \code{shape1 < shape2}.
 twoLevelGraph(letters[1:5], 20)
 }
 \seealso{
-Other graph generators: \code{\link{roundRobinGraph}}
+Other graph generators: 
+\code{\link{roundRobinGraph}()}
 }
 \concept{graph generators}

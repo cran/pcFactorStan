@@ -21,6 +21,7 @@ Create an edge list with round-robin connectivity
 roundRobinGraph(letters[1:5], 10)
 }
 \seealso{
-Other graph generators: \code{\link{twoLevelGraph}}
+Other graph generators: 
+\code{\link{twoLevelGraph}()}
 }
 \concept{graph generators}

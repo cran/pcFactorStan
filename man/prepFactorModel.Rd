@@ -62,11 +62,13 @@ str(dl)
 \seealso{
 To simulate data from a factor model: \link{generateFactorItems}
 
-Other factor model: \code{\link{prepSingleFactorModel}}
+Other factor model: 
+\code{\link{prepSingleFactorModel}()}
 
-Other data preppers: \code{\link{prepCleanData}},
-  \code{\link{prepData}},
-  \code{\link{prepSingleFactorModel}}
+Other data preppers: 
+\code{\link{prepCleanData}()},
+\code{\link{prepData}()},
+\code{\link{prepSingleFactorModel}()}
 }
 \concept{data preppers}
 \concept{factor model}

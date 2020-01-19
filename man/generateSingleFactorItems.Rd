@@ -5,8 +5,7 @@
 \title{Generate paired comparison data with a common factor that
 accounts for some proportion of the variance}
 \usage{
-generateSingleFactorItems(df, prop, th = 0.5, name, ..., scale = 1,
-  alpha = 1)
+generateSingleFactorItems(df, prop, th = 0.5, name, ..., scale = 1, alpha = 1)
 }
 \arguments{
 \item{df}{a data frame with pairs of vertices given in columns \code{pa1} and \code{pa2}, and item response data in other columns}
@@ -101,8 +100,9 @@ learning algorithm that masters chess, shogi, and Go through
 self-play. Science, 362(6419), 1140-1144.
 }
 \seealso{
-Other item generators: \code{\link{generateCovItems}},
-  \code{\link{generateFactorItems}},
-  \code{\link{generateItem}}
+Other item generators: 
+\code{\link{generateCovItems}()},
+\code{\link{generateFactorItems}()},
+\code{\link{generateItem}()}
 }
 \concept{item generators}

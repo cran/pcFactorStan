@@ -4,8 +4,16 @@
 \alias{responseCurve}
 \title{Produce data suitable for plotting item response curves}
 \usage{
-responseCurve(dl, fit, responseNames, item = dl$nameInfo$item,
-  samples = 100, from = -6, to = -from, by = 0.1)
+responseCurve(
+  dl,
+  fit,
+  responseNames,
+  item = dl$nameInfo$item,
+  samples = 100,
+  from = -6,
+  to = -from,
+  by = 0.1
+)
 }
 \arguments{
 \item{dl}{a data list prepared by \code{\link{prepData}}}
@@ -94,7 +102,8 @@ Masters, G. N. (1982). A Rasch model for partial credit scoring.
 Psychometrika, 47, 149–174. doi: 10.1007/BF02296272
 }
 \seealso{
-Other data extractor: \code{\link{parDistributionCustom}},
-  \code{\link{parInterval}}
+Other data extractor: 
+\code{\link{parDistributionCustom}()},
+\code{\link{parInterval}()}
 }
 \concept{data extractor}

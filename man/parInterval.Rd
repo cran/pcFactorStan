@@ -4,8 +4,7 @@
 \alias{parInterval}
 \title{Produce data suitable for plotting parameter estimates}
 \usage{
-parInterval(fit, pars, nameVec, label = withoutIndex(pars[1]),
-  width = 0.8)
+parInterval(fit, pars, nameVec, label = withoutIndex(pars[1]), width = 0.8)
 }
 \arguments{
 \item{fit}{a \code{\link[rstan:stanfit-class]{stanfit}} object}
@@ -34,7 +33,8 @@ Produce data suitable for plotting parameter estimates
 \donttest{ vignette('manual', 'pcFactorStan') }
 }
 \seealso{
-Other data extractor: \code{\link{parDistributionCustom}},
-  \code{\link{responseCurve}}
+Other data extractor: 
+\code{\link{parDistributionCustom}()},
+\code{\link{responseCurve}()}
 }
 \concept{data extractor}

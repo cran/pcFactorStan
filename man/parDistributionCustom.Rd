@@ -5,8 +5,13 @@
 \alias{parDistributionFor}
 \title{Produce data suitable for plotting parameter distributions}
 \usage{
-parDistributionCustom(fit, pars, nameVec, label = withoutIndex(pars[1]),
-  samples = 500)
+parDistributionCustom(
+  fit,
+  pars,
+  nameVec,
+  label = withoutIndex(pars[1]),
+  samples = 500
+)
 
 parDistributionFor(fit, pi, samples = 500)
 }
@@ -38,7 +43,8 @@ Produce data suitable for plotting parameter distributions
 \donttest{ vignette('manual', 'pcFactorStan') }
 }
 \seealso{
-Other data extractor: \code{\link{parInterval}},
-  \code{\link{responseCurve}}
+Other data extractor: 
+\code{\link{parInterval}()},
+\code{\link{responseCurve}()}
 }
 \concept{data extractor}

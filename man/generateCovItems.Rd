@@ -4,8 +4,7 @@
 \alias{generateCovItems}
 \title{Generate paired comparison data with random correlations between items}
 \usage{
-generateCovItems(df, numItems, th = 0.5, name, ..., scale = 1,
-  alpha = 1)
+generateCovItems(df, numItems, th = 0.5, name, ..., scale = 1, alpha = 1)
 }
 \arguments{
 \item{df}{a data frame with pairs of vertices given in columns \code{pa1} and \code{pa2}, and item response data in other columns}
@@ -96,8 +95,9 @@ Masters, G. N. (1982). A Rasch model for partial credit scoring.
 Psychometrika, 47, 149–174. doi: 10.1007/BF02296272
 }
 \seealso{
-Other item generators: \code{\link{generateFactorItems}},
-  \code{\link{generateItem}},
-  \code{\link{generateSingleFactorItems}}
+Other item generators: 
+\code{\link{generateFactorItems}()},
+\code{\link{generateItem}()},
+\code{\link{generateSingleFactorItems}()}
 }
 \concept{item generators}
