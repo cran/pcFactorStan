@@ -10,7 +10,7 @@ test_that("generateItem", {
   expect_error(generateItem(df, bob="whatever"),
                "Rejected are any values passed")
   df <- generateItem(df)
-  expect_equivalent(c(table(df$i1)), c(7,17,16))
+  expect_equivalent(c(table(df$i1)), c(10,11,19))
 
   expect_error(generateItem(df, name="i1"),
                "Colname i1 is already taken")
@@ -45,8 +45,9 @@ test_that("generateCovItems", {
   # This is a nonsensical way to look at the data.
   # Just ensure that nothing has changed.
   c1 <- cov(df[,paste0('i',1:3)])
+  # cat(deparse(round(c1[lower.tri(c1, diag = TRUE)],3)))
   expect_equal(c1[lower.tri(c1, diag = TRUE)],
-               c(0.543, 0.232, -0.134, 0.77, -0.266, 0.652),
+               c(0.794, 0.101, -0.232, 0.829, -0.219, 0.822),
                tolerance=.001, scale=1)
 
   expect_error(generateCovItems(df, 1),
@@ -58,14 +59,19 @@ test_that("generateCovItems", {
 
 test_that("generateSingleFactorItems", {
   set.seed(1)
+  df <- expect_warning(twoLevelGraph(letters[1:10], 4),
+                 "Sample size too small")
+  expect_equal(nrow(df), 4)
+
   df <- twoLevelGraph(letters[1:10], 100)
   df <- generateSingleFactorItems(df, 3)
 
   # This is a nonsensical way to look at the data.
   # Just ensure that nothing has changed.
   c1 <- cov(df[,paste0('i',1:3)])
+  #  cat(deparse(round(c1[lower.tri(c1, diag = TRUE)],3)))
   expect_equal(c1[lower.tri(c1, diag = TRUE)],
-               c(0.624, 0.142, 0.009, 0.644, -0.221, 0.579),
+               c(0.782, 0.26, -0.049, 0.829, -0.101, 0.825),
                tolerance=1e-3, scale=1)
 
   expect_error(generateSingleFactorItems(df, 1),
@@ -80,18 +86,12 @@ test_that("generateFactorItems", {
   set.seed(1)
   df <- twoLevelGraph(letters[1:10], 100)
   df <- generateFactorItems(df, list(f1=paste0('i',1:4),
-                                     f2=paste0('i',2:4)),
-                            c(f1=0.9, f2=0.5))
+                                     f2=paste0('i',2:4)))
   # This is a nonsensical way to look at the data.
   # Just ensure that nothing has changed.
   c1 <- cov(df[,paste0('i',1:4)])
+  # cat(deparse(round(c1[lower.tri(c1, diag = TRUE)],3)))
   expect_equal(c1[lower.tri(c1, diag = TRUE)],
-               c(0.657, -0.031, -0.055, -0.042, 0.652, 0.073, 0.043,
-                 0.602,  -0.021, 0.563),
+               c(0.775, -0.048, 0.099, -0.149, 0.795, 0.016, 0.038, 0.834, -0.172,  0.735),
                tolerance=1e-3, scale=1)
-
-  expect_error(generateFactorItems(df, list(f1=paste0('i',1:4),
-                                     f2=paste0('i',2:4)),
-                            c(f1=100, f2=100)),
-               "factorScalePrior is too large")
 })

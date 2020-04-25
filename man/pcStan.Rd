@@ -24,7 +24,7 @@ Uses \code{\link{findModel}} to find the appropriate
 }
 \examples{
 dl <- prepData(phyActFlowPropensity[,c(1,2,3)])
-dl$varCorrection <- 2.0
+dl$varCorrection <- 5.0
 \donttest{pcStan('unidim_adapt', data=dl)}  # takes more than 5 seconds
 }
 \seealso{

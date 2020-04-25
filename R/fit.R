@@ -93,16 +93,20 @@ prepCleanData <- function(df) {
   weight <- c()
   pick <- c()
   refresh <- c()
+  numOutcome <- c()
+  numRefresh <- 0L
   for (lx in 1:length(l)) {
     x <- l[[lx]]
     pt <- table(x$pick, useNA="no")
     if (length(pt) == 0) next
-    pa1 <- c(pa1, rep(unclass(x$pa1)[1], length(pt)))
-    pa2 <- c(pa2, rep(unclass(x$pa2)[1], length(pt)))
-    item <- c(item, rep(unclass(x$item)[1], length(pt)))
+    numRefresh <- numRefresh + 1L
+    pa1 <- c(pa1, unclass(x$pa1)[1])
+    pa2 <- c(pa2, unclass(x$pa2)[1])
+    item <- c(item, unclass(x$item)[1])
     weight <- c(weight, pt, use.names=FALSE)
     pick <- c(pick, as.integer(names(pt)))
-    refresh <- c(refresh, c(1, rep(0, length(pt)-1)))
+    refresh <- c(refresh, length(pt))
+    numOutcome <- c(numOutcome, sum(pt))
   }
 
   dl <- list(
@@ -120,9 +124,17 @@ prepCleanData <- function(df) {
     pa2=pa2,
     weight=weight,
     pick=pick,
+    numRefresh=numRefresh,
     refresh=refresh,
+    numOutcome=numOutcome,
     # multivariate data
-    item=item
+    item=item,
+    # priors
+    alphaScalePrior = 0.2,
+    # correlation model
+    corLKJPrior = 2.5,  # 2.0 not quite enough
+    # factor model
+    propShape = 3.0   # 2.0 give divegence, 4.0 okay, but try to reduce?
   )
   if (any(is.na(match(preppedDataFields, names(dl))))) {
     stop("Bug in prepCleanData(); contact developers") # nocov
@@ -225,23 +237,33 @@ findModel <- function(model=NULL) {
 #'
 #' Specify a single latent factor with a path to each item.
 #'
-#' @param factorScalePrior standard deviation of the normal prior for the logit transformed factor proportion
+#' @template args-factorScalePrior
 #' @template args-data
 #' @template return-datalist
 #' @examples
 #' dl <- prepData(phyActFlowPropensity)
-#' dl <- prepSingleFactorModel(dl, 0.9)
+#' dl <- prepSingleFactorModel(dl)
 #' str(dl)
 #' @family factor model
 #' @family data preppers
 #' @export
-prepSingleFactorModel <- function(data, factorScalePrior) {
+#' @importFrom lifecycle deprecate_warn
+#' @importFrom lifecycle deprecated
+prepSingleFactorModel <- function(data, factorScalePrior=deprecated()) {
+  if (lifecycle::is_present(factorScalePrior)) {
+    deprecate_warn("1.5.0", "prepSingleFactorModel(factorScalePrior = )")
+  }
   verifyIsPreppedData(data)
-  data$factorScalePrior <- as.array(factorScalePrior)
   ni <- data$NITEMS
   data$factorItemPath <- matrix(c(rep(1,ni), 1:ni), nrow=2, byrow=TRUE)
   data$NFACTORS <- 1L
   data$NPATHS <- ni
+  data <- setFactorScalePrior(data)
+  data
+}
+
+setFactorScalePrior <- function(data) {
+  data$factorScalePrior <- as.array(rep(1.2, data$NFACTORS))
   data
 }
 
@@ -250,74 +272,47 @@ prepSingleFactorModel <- function(data, factorScalePrior) {
 #' Specify a factor model with an arbitrary number of factors and
 #' arbitrary factor-to-item structure.
 #'
-#' @details Both \code{factorScalePrior} and \code{psiScalePrior} are
-#'   in the same units. A logistic transformation is applied to the
-#'   signed proportion or correlation such that the parameter value
-#'   becomes an unbounded real. The prior is a zero mean normal on
-#'   this value with the given standard deviation.
-#'
 #' @template detail-factorspec
 #' @template args-path
 #' @template args-factorScalePrior
 #' @template args-data
-#' @param psiScalePrior matrix of priors for factor correlations
+#' @param psiScalePrior matrix of priors for factor correlations (deprecated)
 #' @template return-datalist
 #' @examples
 #' pa <- phyActFlowPropensity[,setdiff(colnames(phyActFlowPropensity),
 #'                                     c('goal1','feedback1'))]
 #' dl <- prepData(pa)
-#' psi <- diag(3)
-#' psi[lower.tri(psi)] <- runif(3, 0, .8)
-#' psi[upper.tri(psi)] <- t(psi)[upper.tri(psi)]
-#' fname <- c('flow','f2','rc')
-#' dimnames(psi) <- list(fname, fname)
 #' dl <- prepFactorModel(dl,
 #'                       list(flow=c('complex','skill','predict',
 #'                                   'creative', 'novelty', 'stakes',
 #'                                   'present', 'reward', 'chatter',
 #'                                   'body'),
 #'                            f2=c('waiting','control','evaluated','spont'),
-#'                            rc=c('novelty', 'waiting')),
-#'                       c(flow=0.9, f2=0.5, rc=0.2), psi)
+#'                            rc=c('novelty', 'waiting')))
 #' str(dl)
 #' @family factor model
 #' @family data preppers
 #' @seealso To simulate data from a factor model: \link{generateFactorItems}
 #' @export
-prepFactorModel <- function(data, path, factorScalePrior,
-                            psiScalePrior=NULL) {
+prepFactorModel <- function(data, path, factorScalePrior=deprecated(),
+                            psiScalePrior=deprecated()) {
+  if (lifecycle::is_present(factorScalePrior)) {
+    deprecate_warn("1.5.0", "prepFactorModel(factorScalePrior = )")
+  }
+  if (lifecycle::is_present(psiScalePrior)) {
+    deprecate_warn("1.5.0", "prepFactorModel(psiScalePrior = )")
+  }
   verifyIsPreppedData(data)
   items <- data$nameInfo$item
-  validateFactorModel(items, path, factorScalePrior)
+  validateFactorModel(items, path)
   itemsPerFactor <- sapply(path, length)
-  data$factorScalePrior <- as.array(unname(factorScalePrior[names(path)]))
   data$factorItemPath <- matrix(c(rep(1:length(itemsPerFactor), itemsPerFactor),
                                   unlist(lapply(path, function(x) match(x, items)))),
                                 nrow=2, byrow=TRUE)
-  data$NFACTORS <- length(factorScalePrior)
-  if (length(path) > 1) {
-    if (missing(psiScalePrior)) {
-      stop("Specify psiScalePrior for correlations between factors")
-    }
-    if (length(colnames(psiScalePrior)) != length(path)) {
-      stop("psiScalePrior must have dimnames")
-    }
-    if (any(colnames(psiScalePrior) != rownames(psiScalePrior))) {
-      stop("psiScalePrior must have identical row and column names")
-    }
-    if (any(psiScalePrior != t(psiScalePrior))) {
-      stop("psiScalePrior must be symmetric")
-    }
-    sel <- match(names(path), colnames(psiScalePrior))
-    if (any(is.na(sel))) {
-      stop(paste("psiScalePrior does not mention some factors:", names(path)[is.na(sel)]))
-    }
-    psp <- psiScalePrior[sel,sel]
-    data$NPSI <- data$NFACTORS * (data$NFACTORS - 1) / 2;
-    data$psiScalePrior <- as.array(psp[lower.tri(psp)])
-  }
+  data$NFACTORS <- length(names(path))
   data$NPATHS <- sum(itemsPerFactor)
   data$nameInfo[['factor']] <- names(path)
+  data <- setFactorScalePrior(data)
   data
 }
 
@@ -338,7 +333,7 @@ prepFactorModel <- function(data, path, factorScalePrior,
 #' @seealso \code{\link{calibrateItems}}, \code{\link{outlierTable}}
 #' @examples
 #' dl <- prepData(phyActFlowPropensity[,c(1,2,3)])
-#' dl$varCorrection <- 2.0
+#' dl$varCorrection <- 5.0
 #' \donttest{pcStan('unidim_adapt', data=dl)}  # takes more than 5 seconds
 #' @importFrom rstan sampling
 #' @export
@@ -362,7 +357,7 @@ pcStan <- function(model, data, ...) {
 #' Then the \sQuote{unidim_adapt} model is fit to each item individually.
 #' A larger \code{varCorrection} will obtain a more accurate
 #' \code{scale}, but is also more likely to produce an intractable
-#' model. A good compromise is between 2.0 and 4.0.
+#' model. A good compromise is between 5.0 and 9.0.
 #'
 #' @return
 #' A data.frame (one row per item) with the following columns:
@@ -387,7 +382,7 @@ pcStan <- function(model, data, ...) {
 #' @importMethodsFrom rstan summary
 #' @importFrom rstan get_num_divergent get_max_treedepth_iterations get_low_bfmi_chains
 #' @export
-calibrateItems <- function(df, iter=2000L, chains=4L, varCorrection=3.0, maxAttempts=5L, ...) {
+calibrateItems <- function(df, iter=2000L, chains=4L, varCorrection=5.0, maxAttempts=5L, ...) {
   df <- filterGraph(df)
   df <- normalizeData(df)
   vCol <- match(paste0('pa',1:2), colnames(df))
@@ -506,16 +501,31 @@ toLoo <- function(fit, ...) {
 outlierTable <- function(data, x, threshold=0.5) {
   verifyIsPreppedData(data)
   ids <- pareto_k_ids(x, threshold)
-  loc <- c(1L, 1L+cumsum(data$weight))
-  offset <- findInterval(ids, loc)
+  xx <- data.frame(rx=rep(NA, data$N),
+                   px=rep(NA, data$N))
+  cmpStart <- 1L
+  cur <- 1L
+  for (rx in 1:data$numRefresh) {
+    len <- data$refresh[rx]
+    for (ox in cmpStart:(cmpStart + len - 1)) {
+      for (wx in 1:data$weight[ox]) {
+        xx[cur,'rx']=rx
+        xx[cur,'px']=ox
+        cur <- cur + 1L
+      }
+    }
+    cmpStart <- cmpStart + data$refresh[rx]
+  }
+  RX <- xx[ids,'rx']
+  PX <- xx[ids,'px']
   palist <- data$nameInfo$pa
   itemName <- data$nameInfo$item
-  df <- data.frame(pa1=data$pa1[offset],
-             pa2=data$pa2[offset],
-             item=data$item[offset],
-             pick=data$pick[offset],
+  df <- data.frame(pa1=data$pa1[RX],
+             pa2=data$pa2[RX],
+             item=data$item[RX],
+             pick=data$pick[PX],
              k=pareto_k_values(x)[ids])
-  df <- df[!duplicated(offset),]
+  df <- df[!duplicated(PX),]
   for (k in paste0('pa',1:2)) {
     levels(df[[k]]) <- palist
     class(df[[k]]) <- 'factor'
@@ -564,7 +574,6 @@ assertDataFitCompat <- function(dl, fit) {
 #' and \code{rbind} the results together.
 #'
 #' @template detail-response
-#' @template ref-masters1982
 #' @return
 #' A data.frame with the following columns:
 #' \describe{
@@ -577,11 +586,12 @@ assertDataFitCompat <- function(dl, fit) {
 #' }
 #' @export
 #' @importFrom rstan extract
+#' @importFrom stats qnorm
 #' @family data extractor
 #' @examples
 #' \donttest{ vignette('manual', 'pcFactorStan') }
 responseCurve <- function(dl, fit, responseNames, item=dl$nameInfo$item,
-                          samples=100, from=-6, to=-from, by=.1) {
+                          samples=100, from=qnorm(.1), to=-from, by=.02) {
   assertDataFitCompat(dl, fit)
   pd <- fit@par_dims
   itemIndex <- match(item, dl$nameInfo$item)
@@ -595,11 +605,12 @@ responseCurve <- function(dl, fit, responseNames, item=dl$nameInfo$item,
                 paste(item[mismatch], collapse=', ')))
   }
   grid <- seq(from,to,by)
-  df <- expand.grid(response=responseNames, worthDiff=grid,
+  df <- expand.grid(response=responseNames, worthDiff=1:length(grid),
                     item=item, sample=1:samples, prob=NA)
   pick <- c()
   for (i1 in item) {
     ii <- match(i1, dl$nameInfo$item)
+    grid <- seq(from,to,by) / dl$scale[ii]
     thrInd <- dl$TOFFSET[ii] + 1:dl$NTHRESH[ii] - 1L
     thrData <- extract(fit, pars=paste0("threshold[",thrInd,"]"))
     if ('alpha' %in% names(pd)) {
@@ -627,6 +638,7 @@ responseCurve <- function(dl, fit, responseNames, item=dl$nameInfo$item,
                   sapply(thrData, function(x) x[pick[sx]]))
       })
       df[mask, 'prob'] <- c(p1)
+      df[mask, 'worthDiff'] <- kronecker(grid, rep(1, nrow(p1)))
     }
   }
   df$responseSample <-
@@ -640,14 +652,14 @@ responseCurve <- function(dl, fit, responseNames, item=dl$nameInfo$item,
 #' @param name a parameter name
 #' @return the name without the square bracket parameter indexing
 #' @examples
-#' withoutIndex("foo[1,2")
+#' withoutIndex("foo[1,2]")
 #' @export
 withoutIndex <- function(name) {
   sub("\\[[\\d,]+\\]$", "", name, perl=TRUE)
 }
 
 #' Produce data suitable for plotting parameter estimates
-#' 
+#'
 #' @template args-fit
 #' @param pars a vector of parameter names
 #' @param label column name for \code{nameVec}
@@ -669,16 +681,23 @@ withoutIndex <- function(name) {
 #' \donttest{ vignette('manual', 'pcFactorStan') }
 parInterval <- function(fit, pars, nameVec,
                         label=withoutIndex(pars[1]), width=0.8) {
+  if (!is(fit, "stanfit")) stop("fit must be a stanfit object")
+  if (width <= 0 || width >= 1) stop("width must be in the interval (0,1)")
   probs <- 0.5 + c(-width/2, 0, width/2)
   interval <- summary(fit, pars=pars, probs=probs)$summary[,4:6,drop=FALSE]
   colnames(interval) <- c("L","M","U")
   interval <- as.data.frame(interval)
+  if (nrow(interval) != length(nameVec)) {
+    stop(paste("pars and nameVec must be the same length. Currently",
+               "pars is length", nrow(interval),
+               "but nameVec is length", length(nameVec)))
+  }
   interval[[label]] <- factor(nameVec, levels=nameVec)
   interval
 }
 
 #' Produce data suitable for plotting parameter distributions
-#' 
+#'
 #' @template args-fit
 #' @param pars a vector of parameter names
 #' @param label column name for \code{nameVec}
@@ -699,7 +718,13 @@ parInterval <- function(fit, pars, nameVec,
 #' \donttest{ vignette('manual', 'pcFactorStan') }
 parDistributionCustom <- function(fit, pars, nameVec,
                                   label=withoutIndex(pars[1]), samples=500) {
+  if (!is(fit, "stanfit")) stop("fit must be a stanfit object")
   colSet <- extract(fit, pars)
+  if (length(colSet) != length(nameVec)) {
+    stop(paste("pars and nameVec must be the same length. Currently",
+               "pars is length", length(colSet),
+               "but nameVec is length", length(nameVec)))
+  }
   nextCol <- 1L
   pick <- c()
   tall <- NULL
@@ -723,5 +748,6 @@ parDistributionCustom <- function(fit, pars, nameVec,
 #' @rdname parDistributionCustom
 #' @export
 parDistributionFor <- function(fit, pi, samples=500) {
-  parDistributionCustom(fit, rownames(pi), nameVec=pi[[4]], label=colnames(pi)[4])
+  parDistributionCustom(fit, rownames(pi), nameVec=pi[[4]],
+                        label=colnames(pi)[4], samples=samples)
 }

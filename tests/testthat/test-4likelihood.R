@@ -23,15 +23,15 @@ test_that("unidim", {
   dl$varCorrection <- 2.0
   m1 <- findModel("unidim_adapt")
   f1 <- sampling(m1, dl, chains=1, cores=0, iter=1, seed=1,warmup=0, refresh=0)
-  expect_equal(get_logposterior(f1)[[1]], -3060.868, tolerance=1e-2, scale=1)
+  expect_equal(get_logposterior(f1)[[1]], -3612.551, tolerance=1e-2, scale=1)
 
   dl$scale <- 1.0
   m2 <- findModel("unidim_ll")
   f2 <- sampling(m2, dl, chains=1, cores=0, iter=1, seed=1,warmup=0, refresh=0)
-  expect_equal(get_logposterior(f2)[[1]], -6324.085, tolerance=1e-2, scale=1)
+  expect_equal(get_logposterior(f2)[[1]], -8044.32, tolerance=1e-2, scale=1)
   #cat(deparse(round(fivenum(extract(f2)$log_lik[1,]), 3)))
   expect_equal(fivenum(extract(f2)$log_lik[1,]),
-               c(-31.897, -10.49, -4.678, -0.609, -0.023), tolerance=1e-2, scale=1)
+               c(-21.461, -13.534, -8.544, -0.193, -0.001), tolerance=1e-2, scale=1)
 })
 
 test_that("correlation", {
@@ -40,24 +40,23 @@ test_that("correlation", {
   dl$scale <- rnorm(dl$NITEMS, sd=.2)
   m2 <- findModel("correlation_ll")
   f2 <- sampling(m2, dl, chains=1, cores=0, iter=1, seed=1,warmup=0, refresh=0)
-  expect_equal(get_logposterior(f2)[[1]], -59564.49, tolerance=1e-2, scale=1)
+  expect_equal(get_logposterior(f2)[[1]], -64918.59, tolerance=1e-2, scale=1)
   #cat(deparse(round(fivenum(extract(f2)$log_lik[1,]), 3)))
   expect_equal(fivenum(extract(f2)$log_lik[1,]),
-               c(-23.025, -4.753, -1.724, -1.386, 0), tolerance=1e-2, scale=1)
+               c(-29.637, -3.781, -2.027, -0.762, 0), tolerance=1e-2, scale=1)
 })
 
 test_that("factor", {
   set.seed(1)
   dl <- prepData(phyActFlowPropensity)
   dl$scale <- rep(1.5, dl$NITEMS)
-  dl$alpha <- rnorm(dl$NITEMS, 1, .1)
-  dl <- prepSingleFactorModel(dl, .2)
+  dl <- prepSingleFactorModel(dl)
   m2 <- findModel("factor1_ll")
   f2 <- sampling(m2, dl, chains=1, cores=0, iter=1, seed=1,warmup=0, refresh=0)
-  expect_equal(get_logposterior(f2)[[1]], -108931.7, tolerance=1e-1, scale=1)
+  expect_equal(get_logposterior(f2)[[1]], -60859.06, tolerance=1e-1, scale=1)
   #cat(deparse(round(fivenum(extract(f2)$log_lik[1,]), 3)))
   expect_equal(fivenum(extract(f2)$log_lik[1,]),
-               c(-54.219, -9.448, -4.866, -2.03, 0), tolerance=1e-2, scale=1)
+               c(-33.319, -3.754, -1.989, -0.963, 0), tolerance=1e-2, scale=1)
 })
 
 test_that("mixed thresholds", {
@@ -80,10 +79,10 @@ test_that("mixed thresholds", {
   dl$scale <- scaleSave
   m2 <- findModel("correlation_ll")
   f2 <- sampling(m2, dl, chains=1, cores=0, iter=1, seed=1,warmup=0, refresh=0)
-  expect_equal(get_logposterior(f2)[[1]], -10701.834, tolerance=1e-2, scale=1)
+  expect_equal(get_logposterior(f2)[[1]], -5792.789, tolerance=1e-2, scale=1)
   #cat(deparse(round(fivenum(extract(f2)$log_lik[1,]), 3)))
   expect_equal(fivenum(extract(f2)$log_lik[1,]),
-               c(-73.863, -10.18, -2.316, -1.524, -0.004), tolerance=1e-2, scale=1)
+               c(-26.73, -3.609, -1.794, -1.238, -0.035), tolerance=1e-2, scale=1)
 
   df <- normalizeData(df, .palist=sample(palist, 10))
   dl <- prepCleanData(df)
@@ -101,9 +100,8 @@ test_that("calibrateItems", {
   expect_equal(nrow(result), 3)
   expect_true(all(result[1:2,'n_eff'] > 200))
   expect_true(all(result[1:2,'Rhat'] < 1.015))
-  expect_true(result[3,'low_bfmi'] > 0 ||
-                result[3,'divergent'] > 0)
-  expect_true(result[3,'n_eff'] < 200)
-  expect_equal(result[1:2,'scale'], c(.469, .535),
+  # cat(deparse(round(result[,'scale'],3)))
+  expect_equal(result[,'scale'], c(0.566, 0.646, 0.081),
                tolerance=.01, scale=1)
 })
+

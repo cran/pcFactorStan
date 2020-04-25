@@ -1,39 +1,51 @@
 #include /pre/license.stan
 functions {
-#include /functions/cmp_prob2.stan
+#include /functions/pairwise.stan
 }
 data {
+  real alphaScalePrior;
   // dimensions
-  int<lower=1> NPA;             // number of players or objects or things
-  int<lower=1> NCMP;            // number of unique comparisons
-  int<lower=1> N;               // number of observations
+  int<lower=1> NPA;             // worths or players or objects or things
+  int<lower=1> NCMP;            // unique comparisons
+  int<lower=1> N;               // observations
+  int<lower=1> numRefresh;      // when change in item/pa1/pa2
   int<lower=1> NITEMS;
   int<lower=1> NTHRESH[NITEMS];         // number of thresholds
   int<lower=1> TOFFSET[NITEMS];
   vector[NITEMS] scale;
+  real corLKJPrior;
   // response data
-  int<lower=1, upper=NPA> pa1[NCMP];        // PA1 for observation N
-  int<lower=1, upper=NPA> pa2[NCMP];        // PA2 for observation N
+  int<lower=1, upper=NPA> pa1[numRefresh];
+  int<lower=1, upper=NPA> pa2[numRefresh];
   int weight[NCMP];
   int pick[NCMP];
-  int refresh[NCMP];
-  int item[NCMP];
+  int refresh[numRefresh];
+  int numOutcome[numRefresh];
+  int item[numRefresh];
 }
 transformed data {
   int totalThresholds = sum(NTHRESH);
   int rcat[NCMP];
-  for (cmp in 1:NCMP) {
-    rcat[cmp] = pick[cmp] + NTHRESH[item[cmp]] + 1;
+  {
+    int cmpStart = 0;
+    for (rx in 1:numRefresh) {
+      int ix = item[rx];
+      for (cmp in 1:refresh[rx]) {
+        rcat[cmpStart + cmp] = pick[cmpStart + cmp] + NTHRESH[ix] + 1;
+      }
+      cmpStart += refresh[rx];
+    }
   }
 }
 parameters {
-  vector[totalThresholds] threshold;
+  vector<lower=0,upper=1>[totalThresholds] rawThreshold;
   vector<lower=0>[NITEMS] alpha;
   matrix[NPA,NITEMS]      rawTheta;
   cholesky_factor_corr[NITEMS] rawThetaCorChol;
 }
 transformed parameters {
-  vector[totalThresholds] cumTh;
+  vector[totalThresholds] threshold;
+  vector[totalThresholds] rawCumTh;
   matrix[NPA,NITEMS]      theta;
 
   // non-centered parameterization due to thin data
@@ -41,62 +53,54 @@ transformed parameters {
     theta[pa,] = (rawThetaCorChol * rawTheta[pa,]')';
   }
   for (ix in 1:NITEMS) {
+    real maxSpan = max(theta[,ix]) - min(theta[,ix]);
     int from = TOFFSET[ix];
     int to = TOFFSET[ix] + NTHRESH[ix] - 1;
-    cumTh[from:to] = cumulative_sum(threshold[from:to]);
+    threshold[from:to] = maxSpan * rawThreshold[from:to];
+    rawCumTh[from:to] = cumulative_sum(threshold[from:to]);
   }
 }
 model {
-  vector[max(NTHRESH)*2 + 1] prob;
-  int probSize;
-
-  rawThetaCorChol ~ lkj_corr_cholesky(2);
+  rawThetaCorChol ~ lkj_corr_cholesky(corLKJPrior);
   for (pa in 1:NPA) {
-    rawTheta[pa,] ~ normal(0,1);
+    rawTheta[pa,] ~ std_normal();
   }
-  threshold ~ normal(0, 2.0);
-  alpha ~ exponential(0.1);
-  for (cmp in 1:NCMP) {
-    if (refresh[cmp]) {
-      int ix = item[cmp];
+  rawThreshold ~ beta(1.1, 2);
+  for (ix in 1:NITEMS) alpha[ix] ~ normal(1.749, alphaScalePrior) T[0,];
+  {
+    int cmpStart = 1;
+    for (rx in 1:numRefresh) {
+      int ix = item[rx];
       int from = TOFFSET[ix];
       int to = TOFFSET[ix] + NTHRESH[ix] - 1;
-      probSize = (2*NTHRESH[ix]+1);
-      prob[:probSize] = cmp_probs(scale[ix], alpha[ix],
-               theta[pa1[cmp], ix],
-               theta[pa2[cmp], ix], cumTh[from:to]);
-    }
-    if (weight[cmp] == 1) {
-      target += categorical_lpmf(rcat[cmp] | prob[:probSize]);
-    } else {
-      target += weight[cmp] * categorical_lpmf(rcat[cmp] | prob[:probSize]);
+      target += pairwise_logprob(rcat, weight, cmpStart, refresh[rx],
+                                 scale[ix], alpha[ix], theta[pa1[rx], ix],
+                                 theta[pa2[rx], ix], rawCumTh[from:to]);
+      cmpStart += refresh[rx];
     }
   }
 }
 generated quantities {
-  vector[max(NTHRESH)*2 + 1] prob;
-  int probSize;
-  vector[N] log_lik;
-  int cur = 1;
+  real log_lik[N];
 
   corr_matrix[NITEMS] thetaCor;
   thetaCor = multiply_lower_tri_self_transpose(rawThetaCorChol);
 
-  for (cmp in 1:NCMP) {
-    real ll;
-    if (refresh[cmp]) {
-      int ix = item[cmp];
+  {
+    int cmpStart = 1;
+    int cur = 1;
+    for (rx in 1:numRefresh) {
+      int ix = item[rx];
       int from = TOFFSET[ix];
       int to = TOFFSET[ix] + NTHRESH[ix] - 1;
-      probSize = (2*NTHRESH[ix]+1);
-      prob[:probSize] = cmp_probs(scale[ix], alpha[ix],
-               theta[pa1[cmp], ix],
-               theta[pa2[cmp], ix], cumTh[from:to]);
-    }
-    ll = categorical_lpmf(rcat[cmp] | prob[:probSize]);
-    for (wx in 1:weight[cmp]) {
-      log_lik[cur] = ll;
-      cur = cur + 1;
+      int nout = numOutcome[rx];
+      int last = cur + nout - 1;
+      log_lik[cur:last] =
+        pairwise_loo(rcat, weight, nout, cmpStart, refresh[rx],
+                     scale[ix], alpha[ix],
+                     theta[pa1[rx],ix], theta[pa2[rx],ix], rawCumTh[from:to]);
+      cmpStart += refresh[rx];
+      cur += numOutcome[rx];
     }
   }
 }

@@ -4,16 +4,21 @@
 \alias{prepFactorModel}
 \title{Specify a factor model}
 \usage{
-prepFactorModel(data, path, factorScalePrior, psiScalePrior = NULL)
+prepFactorModel(
+  data,
+  path,
+  factorScalePrior = deprecated(),
+  psiScalePrior = deprecated()
+)
 }
 \arguments{
 \item{data}{a data list prepared for processing by Stan}
 
 \item{path}{a named list of item names}
 
-\item{factorScalePrior}{a named numeric vector}
+\item{factorScalePrior}{a named numeric vector (deprecated)}
 
-\item{psiScalePrior}{matrix of priors for factor correlations}
+\item{psiScalePrior}{matrix of priors for factor correlations (deprecated)}
 }
 \value{
 a data list suitable for passing as the \code{data}
@@ -24,39 +29,21 @@ Specify a factor model with an arbitrary number of factors and
 arbitrary factor-to-item structure.
 }
 \details{
-Both \code{factorScalePrior} and \code{psiScalePrior} are
-  in the same units. A logistic transformation is applied to the
-  signed proportion or correlation such that the parameter value
-  becomes an unbounded real. The prior is a zero mean normal on
-  this value with the given standard deviation.
-
-For each factor, you need to specify its name, which items it predicts, and its scale prior.
+For each factor, you need to specify its name and which items it predicts.
 The connections from factors to items is specified by the `path` argument.
-The scale priors are given in the `factorScalePrior` argument.
 Both factors and items are specified by name (not index).
-The example shows how everything fits together.
-Paths are ordered as given in the `path` argument.
-
-The units of `factorScalePrior` is a standard deviation of the
-normal prior for the logit transformed factor proportion.
 }
 \examples{
 pa <- phyActFlowPropensity[,setdiff(colnames(phyActFlowPropensity),
                                     c('goal1','feedback1'))]
 dl <- prepData(pa)
-psi <- diag(3)
-psi[lower.tri(psi)] <- runif(3, 0, .8)
-psi[upper.tri(psi)] <- t(psi)[upper.tri(psi)]
-fname <- c('flow','f2','rc')
-dimnames(psi) <- list(fname, fname)
 dl <- prepFactorModel(dl,
                       list(flow=c('complex','skill','predict',
                                   'creative', 'novelty', 'stakes',
                                   'present', 'reward', 'chatter',
                                   'body'),
                            f2=c('waiting','control','evaluated','spont'),
-                           rc=c('novelty', 'waiting')),
-                      c(flow=0.9, f2=0.5, rc=0.2), psi)
+                           rc=c('novelty', 'waiting')))
 str(dl)
 }
 \seealso{

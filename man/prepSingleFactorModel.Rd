@@ -4,12 +4,12 @@
 \alias{prepSingleFactorModel}
 \title{Specify a single factor model}
 \usage{
-prepSingleFactorModel(data, factorScalePrior)
+prepSingleFactorModel(data, factorScalePrior = deprecated())
 }
 \arguments{
 \item{data}{a data list prepared for processing by Stan}
 
-\item{factorScalePrior}{standard deviation of the normal prior for the logit transformed factor proportion}
+\item{factorScalePrior}{a named numeric vector (deprecated)}
 }
 \value{
 a data list suitable for passing as the \code{data}
@@ -20,7 +20,7 @@ Specify a single latent factor with a path to each item.
 }
 \examples{
 dl <- prepData(phyActFlowPropensity)
-dl <- prepSingleFactorModel(dl, 0.9)
+dl <- prepSingleFactorModel(dl)
 str(dl)
 }
 \seealso{

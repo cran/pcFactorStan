@@ -1,10 +1,62 @@
-softmax <- function(y) exp(y) / sum(exp(y))
-
-cmp_probs <- function(scale, alpha, pa1, pa2, thRaw) {
-  th <- cumsum(thRaw)
-  diff <- scale * (pa2 - pa1)
-  unsummed <- c(0, diff + rev(th), diff - th, use.names = FALSE)
-  softmax(cumsum(alpha * unsummed))
+#' Item response function for pairwise comparisons
+#'
+#' Use \code{\link{itemModelExplorer}} to explore the item model. In
+#' this \pkg{shiny} app, the \emph{discrimination} parameter does what
+#' is customary in item response models. However, it is not difficult
+#' to show that discrimination is a function of thresholds and
+#' scale. That is, discrimination is not an independent parameter.  In
+#' paired comparison models, discrimination and measurement error are
+#' confounded.
+#'
+#' @details
+#'
+#' The thresholds are parameterized as the difference
+#' from the previous threshold. For example, thresholds c(0.5, 0.6)
+#' are not at the same location but are at locations c(0.5,
+#' 1.1). Thresholds are symmetric. If there is one threshold then the
+#' model admits three possible response outcomes (e.g. \emph{win}, \emph{tie}, and
+#' \emph{lose}). Responses are always stored centered with zero representing
+#' a tie. Therefore, it is necessary to add one plus the number of
+#' thresholds to response data to index into the vector returned by
+#' \code{cmp_probs}. For example, if our response data is (-1, 0, 1)
+#' and has one threshold then we would add 2 (1 + 1 threshold) to
+#' obtain the indices (1, 2, 3).
+#'
+#' @section Math:
+#' Up until version 1.4, the item response model was based on the
+#' partial credit model (Masters, 1982). In version 1.5,
+#' the graded response model is used instead (Samejima, 1969).
+#' The advantage of the graded response model is greater
+#' independence among threshold parameters and the ability to
+#' compute only the parts of the model that are actually needed
+#' given particular observations. The curves predicted by both
+#' models are similar and should obtain similar results in data
+#' analyses.
+#'
+#' @param alpha discrimination parameter
+#' @param scale scale correction factor
+#' @param pa1 first latent worth
+#' @param pa2 second latent worth
+#' @param thRaw vector of positive thresholds
+#' @template ref-samejima1969
+#' @template ref-masters1982
+#' @export
+#' @return A vector of probabilities of observing each outcome
+#' @examples
+#' # Returns probabilities of
+#' # c(pa1 > pa2, pa1 = pa2, pa1 < pa2)
+#' cmp_probs(1,1,0,1,.8)
+#'
+#' # Add another threshold for a symmtric 3 point Likert scale
+#' cmp_probs(1,1,0,.5,c(.8, 1.6))
+cmp_probs <- function(alpha, scale, pa1, pa2, thRaw) {
+  th <- cumsum(abs(thRaw))
+  diff <- scale * (pa1 - pa2)
+  at <- c(diff - rev(th), diff + th)
+  #  pr <- plogis(at, scale=1.0/alpha)
+  pr <- 1/(1+exp(-at*alpha))
+  pr <- c(0, pr, 1)
+  diff(pr)
 }
 
 pairMap <- function(n) {
@@ -60,8 +112,7 @@ assertNameUnused <- function(df, name) {
 #'
 #' @template detail-response
 #' @template detail-genfactor
-#' 
-#' @template ref-masters1982
+#'
 #' @template ref-silver2018
 #' @return
 #' The given data.frame \code{df} with additional columns for each item.
@@ -105,23 +156,11 @@ generateSingleFactorItems <- function(df, prop, th=0.5, name, ..., scale=1, alph
   generateItem(df, theta, th, scale=scale, alpha=alpha)
 }
 
-validateFactorModel <- function(items, path, factorScalePrior) {
+validateFactorModel <- function(items, path) {
   if (length(path) == 0) stop("No paths specified")
   n1 <- names(path)
-  n2 <- names(factorScalePrior)
   if (length(n1) == 0) {
     stop("paths must be named, the name is the name of the factor")
-  }
-  if (length(n2) == 0) {
-    stop("factorScalePrior must be named, the name is the name of the factor")
-  }
-  if (length(n1) != length(n2)) {
-    stop(paste("Number of factors mismatch between path",
-               length(path),"and factorScalePrior",
-               length(factorScalePrior)))
-  }
-  if (!setequal(n1, n2)) {
-    stop("path and factorScalePrior specify different factor names")
   }
   itemsPerFactor <- sapply(path, length)
   if (any(itemsPerFactor < 2)) {
@@ -153,18 +192,17 @@ ssqrt <- function(v) sign(v)*sqrt(abs(v))
 #' Generate paired comparison data given a mapping from factors to items.
 #'
 #' @template detail-factorspec
-#' 
+#'
 #' @details Path proportions (factor-to-item loadings) are sampled
 #'   from a logistic transformed normal distribution with scale
-#'   \code{factorScalePrior}. A few attempts are made to resample path
+#'   0.6. A few attempts are made to resample path
 #'   proportions if any of the item proportions sum to more than
 #'   1.0. An exception will be raised if repeated attempts fail to
 #'   produce viable proportion assignments.
-#' 
+#'
 #' @template detail-response
 #' @template detail-genfactor
-#' 
-#' @template ref-masters1982
+#'
 #' @template ref-silver2018
 #' @family item generators
 #' @return
@@ -172,7 +210,7 @@ ssqrt <- function(v) sign(v)*sqrt(abs(v))
 #' In addition, you can obtain path proportions (factor-to-item loadings) from \code{attr(df, "pathProp")},
 #' the factor scores from \code{attr(df, "score")},
 #' and latent worths from \code{attr(df, "worth")}.
-#' 
+#'
 #' @seealso To fit a factor model: \link{prepFactorModel}
 #' @examples
 #' df <- twoLevelGraph(letters[1:10], 100)
@@ -185,7 +223,10 @@ ssqrt <- function(v) sign(v)*sqrt(abs(v))
 #' attr(df, "worth")
 #' @export
 #' @importFrom stats rnorm sd plogis rbinom
-generateFactorItems <- function(df, path, factorScalePrior, th=0.5, name, ..., scale=1, alpha=1) {
+generateFactorItems <- function(df, path, factorScalePrior=deprecated(), th=0.5, name, ..., scale=1, alpha=1) {
+  if (lifecycle::is_present(factorScalePrior)) {
+    deprecate_warn("1.5.0", "prepSingleFactorModel(factorScalePrior = )")
+  }
   palist <- verifyIsData(df)
   items <- Reduce(union, path, c())
   numItems <- length(items)
@@ -194,7 +235,7 @@ generateFactorItems <- function(df, path, factorScalePrior, th=0.5, name, ..., s
     name <- paste0('i', num:(num+numItems-1))
   }
   assertNameUnused(df, name)
-  validateFactorModel(items, path, factorScalePrior)
+  validateFactorModel(items, path)
 
   numFactors <- length(path)
   itemsPerFactor <- sapply(path, length)
@@ -207,8 +248,7 @@ generateFactorItems <- function(df, path, factorScalePrior, th=0.5, name, ..., s
     for (fx in 1:numFactors) {
       sel <- factorItemPath[1,]==fx
       prop[fx+1, factorItemPath[2,sel]] <-
-        2*(plogis(abs(rnorm(sum(factorItemPath[1,]==fx),
-                            sd=factorScalePrior[fx]))) - 0.5)
+        2*(plogis(abs(rnorm(sum(factorItemPath[1,]==fx), sd=.6))) - 0.5)
     }
     if (all(colSums(prop) < .99)) break
     propTry <- propTry + 1L
@@ -261,14 +301,13 @@ generateFactorItems <- function(df, path, factorScalePrior, th=0.5, name, ..., s
 #' This is not difficult. See how in the example.
 #'
 #' @template detail-response
-#' @template ref-masters1982
 #' @family item generators
 #' @return
 #' The given data.frame \code{df} with additional columns for each item.
 #' In addition, you can obtain the correlation matrix used
 #' to generate the latent worths from \code{attr(df, "cor")} and
 #' and latent worths from \code{attr(df, "worth")}.
-#' 
+#'
 #' @examples
 #' library(mvtnorm)
 #' df <- twoLevelGraph(letters[1:10], 100)
@@ -332,7 +371,6 @@ generateCovItems <- function(df, numItems, th=0.5, name, ..., scale=1, alpha=1) 
 #' \sQuote{a}.
 #'
 #' @template detail-response
-#' @template ref-masters1982
 #' @family item generators
 #' @return
 #' The given data.frame \code{df} with additional columns for each item.
@@ -462,20 +500,22 @@ twoLevelGraph <- function(name, N, shape1=0.8, shape2=0.5) {
 
   # Generate all comparisons between 'a' and others to ensure
   # that there are no disconnected vertices.
-  for (rx in 1:(length(name)-1)) {
+  for (rx in 1:min(N,(length(name)-1))) {
     df[rx,'pa1'] <- name[1]
     ox <- 1 + (rx %% length(name))
     df[rx,'pa2'] <- name[ox]
   }
-  for (rx in length(name):nrow(df)) {
-    pick <- 1+floor(sort(c(rbeta(1, shape1, 1),
-                           rbeta(1, shape2, 1))) * length(name))
-    if (pick[1] == pick[2]) {
-      if (pick[1] > 1) pick[1] <- pick[1] - 1
-      else pick[2] <- pick[2] + 1
+  if (N >= length(name)) {
+    for (rx in length(name):nrow(df)) {
+      pick <- 1+floor(sort(c(rbeta(1, shape1, 1),
+                             rbeta(1, shape2, 1))) * length(name))
+      if (pick[1] == pick[2]) {
+        if (pick[1] > 1) pick[1] <- pick[1] - 1
+        else pick[2] <- pick[2] + 1
+      }
+      df[rx,'pa1'] <- name[pick[1]]
+      df[rx,'pa2'] <- name[pick[2]]
     }
-    df[rx,'pa1'] <- name[pick[1]]
-    df[rx,'pa2'] <- name[pick[2]]
   }
   df <- objectNamesToFactor(name, df)
   df

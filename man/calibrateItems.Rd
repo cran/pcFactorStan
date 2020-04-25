@@ -8,7 +8,7 @@ calibrateItems(
   df,
   iter = 2000L,
   chains = 4L,
-  varCorrection = 3,
+  varCorrection = 5,
   maxAttempts = 5L,
   ...
 )
@@ -45,7 +45,7 @@ Data are passed through \code{\link{filterGraph}} and \code{\link{normalizeData}
 Then the \sQuote{unidim_adapt} model is fit to each item individually.
 A larger \code{varCorrection} will obtain a more accurate
 \code{scale}, but is also more likely to produce an intractable
-model. A good compromise is between 2.0 and 4.0.
+model. A good compromise is between 5.0 and 9.0.
 }
 \examples{
 \donttest{

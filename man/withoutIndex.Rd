@@ -16,5 +16,5 @@ the name without the square bracket parameter indexing
 Remove the array indexing from a parameter name
 }
 \examples{
-withoutIndex("foo[1,2")
+withoutIndex("foo[1,2]")
 }

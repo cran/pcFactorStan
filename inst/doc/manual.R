@@ -22,6 +22,7 @@ library(pcFactorStan)
 library(loo)
 library(qgraph)
 library(ggplot2)
+library(Matrix)
 
 ## ---- results='hide'----------------------------------------------------------
 head(phyActFlowPropensity)
@@ -31,7 +32,7 @@ kable(head(phyActFlowPropensity))
 
 ## -----------------------------------------------------------------------------
 dl <- prepData(phyActFlowPropensity[,c(paste0('pa',1:2), 'skill')])
-dl$varCorrection <- 2.0
+dl$varCorrection <- 5.0
 
 ## ----pcStan, message=FALSE, results='hide', cache=TRUE------------------------
 fit1 <- pcStan("unidim_adapt", data=dl)
@@ -40,7 +41,7 @@ fit1 <- pcStan("unidim_adapt", data=dl)
 check_hmc_diagnostics(fit1)
 
 ## ----pcStanDiag2, cache=TRUE--------------------------------------------------
-allPars <- summary(fit1, probs=c())$summary 
+allPars <- summary(fit1, probs=c())$summary
 print(min(allPars[,'n_eff']))
 print(max(allPars[,'Rhat']))
 
@@ -66,7 +67,7 @@ print(s50)
 rm(fit1)  # free up some memory
 
 ## ----calibrateItems, message=FALSE, results='hide', cache=TRUE----------------
-result <- calibrateItems(phyActFlowPropensity, iter=1000L) 
+result <- calibrateItems(phyActFlowPropensity, iter=1000L)
 
 ## ---- results='hide'----------------------------------------------------------
 print(result)
@@ -75,11 +76,11 @@ print(result)
 kable(result)
 
 ## ----covarianceData, cache=TRUE-----------------------------------------------
-pafp <- phyActFlowPropensity 
+pafp <- phyActFlowPropensity
 excl <- match(c('goal1','feedback1'), colnames(pafp))
 pafp <- pafp[,-excl]
 dl <- prepData(pafp)
-dl$scale <- result[-excl,'scale'] 
+dl$scale <- result[match(dl$nameInfo$item, result$item), 'scale']
 
 ## ----covariance, message=FALSE, results='hide', cache=TRUE--------------------
 fit2 <- pcStan("correlation", data=dl, include=FALSE, pars=c('rawTheta', 'rawThetaCorChol'))
@@ -87,7 +88,7 @@ fit2 <- pcStan("correlation", data=dl, include=FALSE, pars=c('rawTheta', 'rawThe
 ## ----covarianceDiag1, cache=TRUE----------------------------------------------
 check_hmc_diagnostics(fit2)
 
-allPars <- summary(fit2, probs=0.5)$summary 
+allPars <- summary(fit2, probs=0.5)$summary
 print(min(allPars[,'n_eff']))
 print(max(allPars[,'Rhat']))
 
@@ -95,15 +96,17 @@ print(max(allPars[,'Rhat']))
 head(allPars[order(allPars[,'sd']),])
 
 ## ----covarianceDiag3, cache=TRUE----------------------------------------------
-allPars <- allPars[allPars[,'sd'] > 1e-6,] 
+allPars <- allPars[allPars[,'sd'] > 1e-6,]
 print(min(allPars[,'n_eff']))
 print(max(allPars[,'Rhat']))
 
-## ----covPlot, cache=TRUE------------------------------------------------------
-covItemNames <- dl$nameInfo$item 
-tc <- summary(fit2, pars=c("thetaCor"), probs=c(.5))$summary[,'50%']
-tcor <- matrix(tc, length(covItemNames), length(covItemNames))
-dimnames(tcor) <- list(covItemNames, covItemNames)
+## ----corPlot, cache=TRUE------------------------------------------------------
+corItemNames <- dl$nameInfo$item
+tc <- summary(fit2, pars=c("thetaCor"), probs=c(.1,.5,.9))$summary
+tcor <- matrix(tc, length(corItemNames), length(corItemNames))
+tcor[sign(tc[,'10%']) != sign(tc[,'90%'])] <- 0  # delete faint edges
+dimnames(tcor) <- list(corItemNames, corItemNames)
+tcor <- nearPD(tcor, corr=TRUE)$mat
 
 qgraph(tcor, layout = "spring", graph = "cor", labels=colnames(tcor),
        legend.cex = 0.3,
@@ -116,35 +119,19 @@ df <- responseCurve(dl, fit2,
   responseNames=c("much more","somewhat more", 'equal',
                   "somewhat less", "much less"))
 ggplot(df) +
-  geom_line(aes(x=worthDiff,y=prob,color=response,linetype=response,
+  geom_line(aes(x=worthDiff, y=prob, color=response,linetype=response,
                 group=responseSample), size=.2, alpha=.2) +
   xlab("difference in latent worths") + ylab("probability") +
-  ylim(0,1) + facet_wrap(~item) +
-    guides(color=guide_legend(override.aes=list(alpha = 1, size=1)))
-
-## -----------------------------------------------------------------------------
-alpha <- summary(fit2, pars=c("alpha"), probs=c(.5))$summary
-rownames(alpha) <- covItemNames
-
-## ---- results='hide'----------------------------------------------------------
-print(alpha[alpha[,'sd']>.25,,drop=FALSE])
-
-## ---- results='asis', echo=FALSE----------------------------------------------
-kable(alpha[alpha[,'sd']>.25,,drop=FALSE])
-
-## -----------------------------------------------------------------------------
-factorProportion <- .3
-factorScalePrior <- .9
-dnorm(qlogis(0.5 + factorProportion/2), sd=factorScalePrior)
+  ylim(0,1) + facet_wrap(~item, scales="free_x") +
+  guides(color=guide_legend(override.aes=list(alpha = 1, size=1)))
 
 ## ----factorData1, cache=TRUE--------------------------------------------------
 pafp <- pafp[,c(paste0('pa',1:2),
-             setdiff(covItemNames, c('spont','control','evaluated','waiting')))]
+             setdiff(corItemNames, c('spont','control','evaluated','waiting')))]
 pafp <- normalizeData(filterGraph(pafp))
 dl <- prepCleanData(pafp)
-dl <- prepSingleFactorModel(dl, 1.0)
+dl <- prepSingleFactorModel(dl)
 dl$scale <- result[match(dl$nameInfo$item, result$item), 'scale']
-dl$alpha <- alpha[match(dl$nameInfo$item, rownames(alpha)), 'mean']
 
 ## ---- results='hide', include = FALSE-----------------------------------------
 rm(fit2)  # free up some memory
@@ -152,22 +139,23 @@ rm(fit2)  # free up some memory
 ## ----factor, message=FALSE, results='hide', cache=TRUE------------------------
 fit3 <- pcStan("factor1_ll", data=dl, include=FALSE,
                pars=c('rawUnique', 'rawUniqueTheta', 'rawPerComponentVar',
-	       'rawFactor', 'rawLoadings', 'rawFactorProp', 'rawNegateFactor', 'rawSeenFactor',
-	       'residual'))
+	       'rawFactor', 'rawLoadings', 'rawFactorProp', 'rawThreshold',
+         'rawPathProp', 'rawCumTh'))
 
 ## ----factorDiag1, cache=TRUE--------------------------------------------------
-check_hmc_diagnostics(fit3) 
+check_hmc_diagnostics(fit3)
 
-interest <- c("threshold", "pathProp", "factor", "lp__")
+interest <- c("threshold", "alpha", "pathProp", "factor", "residualItemCor", "lp__")
 
 allPars <- summary(fit3, pars=interest)$summary
+allPars <- allPars[allPars[,'sd'] > 1e-6,]
 print(min(allPars[,'n_eff']))
 print(max(allPars[,'Rhat']))
 
 ## ----factorLoo, cache=TRUE----------------------------------------------------
-options(mc.cores=1)  # otherwise loo consumes too much RAM 
+options(mc.cores=1)  # otherwise loo consumes too much RAM
 kThreshold <- 0.1
-l1 <- toLoo(fit3) 
+l1 <- toLoo(fit3)
 print(l1)
 
 ## -----------------------------------------------------------------------------
@@ -185,6 +173,10 @@ kable(ot[1:6,], row.names=TRUE)
 xx <- which(ot[,'pa1'] == 'mountain biking' & ot[,'pa2'] == 'climbing' & ot[,'item'] == 'predict' & ot[,'pick'] == -2)
 
 ## ---- results='asis', echo=FALSE----------------------------------------------
+if (length(xx) == 0) {
+  xx <- 1
+  warning("Can't find outlier")
+}
 kable(ot[xx,,drop=FALSE], row.names=TRUE)
 
 ## -----------------------------------------------------------------------------
@@ -208,7 +200,6 @@ sum(c(pafp$pa1 == ot[xx,'pa2'], pafp$pa2 == ot[xx,'pa2']))
 ## ----pathProp, cache=TRUE-----------------------------------------------------
 pi <- parInterval(fit3, 'pathProp', dl$nameInfo$item, label='item')
 pi <- pi[order(abs(pi$M)),]
-pi$item <- factor(pi$item, levels=pi$item)
 
 ggplot(pi) +
   geom_vline(xintercept=0, color="green") +
@@ -223,34 +214,34 @@ ggplot(pi) +
 pick <- paste0('factor[',match(pa11, dl$nameInfo$pa),',1]')
 pi <- parInterval(fit3, pick, pa11, label='activity')
 pi <- pi[order(pi$M),]
-pi$activity <- factor(pi$activity, levels=pi$activity)
 
 ggplot(pi) +
   geom_vline(xintercept=0, color="green") +
-  geom_jitter(data=parDistributionFor(fit3, pi, samples=250),
+  geom_jitter(data=parDistributionFor(fit3, pi, samples=200),
               aes(value, activity), height = 0.35, alpha=.05) +
   geom_segment(aes(y=activity, yend=activity, x=L, xend=U),
                color="yellow", alpha=.5) +
   geom_point(aes(x=M, y=activity), color="red", size=1) +
-  theme(axis.title.y=element_blank()) 
+  theme(axis.title.y=element_blank())
 
 ## ----residualItemCor, cache=TRUE----------------------------------------------
-ric <- summary(fit3, pars=c('residualItemCor'), prob=c(.2,.5,.8))$summary
-r20 <- matrix(ric[,'20%'], length(dl$nameInfo$item), length(dl$nameInfo$item),
-       dimnames=list(dl$nameInfo$item,dl$nameInfo$item))
-r50 <- matrix(ric[,'50%'], length(dl$nameInfo$item), length(dl$nameInfo$item),
-              dimnames=list(dl$nameInfo$item,dl$nameInfo$item))
-r80 <- matrix(ric[,'80%'], length(dl$nameInfo$item), length(dl$nameInfo$item),
-       dimnames=list(dl$nameInfo$item,dl$nameInfo$item))
-ric5 <- fivenum(r50[lower.tri(r50)]) 
-mask <- sign(r20) == -sign(r80) # small, not statistically significant
-r50[mask] <- 0
-diag(r50) <- 2*max(abs(r50[lower.tri(r50)]))  # rescale for better visualization
-
-qgraph(r50, layout = "spring", graph = "cor", labels=colnames(r50),
-       legend.cex = 0.3,
-       cut = 0.3, maximum = 1, minimum = 0, esize = 20,
-       vsize = 7, repulsion = 0.8, negDashed=TRUE, theme="colorblind")
+m <- matrix(apply(expand.grid(r=1:dl$NITEMS, c=1:dl$NITEMS), 1,
+      function(x) paste0("residualItemCor[",x['r'],",",x['c'],"]")),
+      dl$NITEMS, dl$NITEMS)
+n <- matrix(apply(expand.grid(r=dl$nameInfo$item, c=dl$nameInfo$item), 1,
+                  function(x) paste0(x['r'],":",x['c'])),
+            dl$NITEMS, dl$NITEMS)
+pi <- parInterval(fit3, m[lower.tri(m)], n[lower.tri(n)], label='cor')
+pi <- pi[abs(pi$M) > .08,]
+pi <- pi[order(-abs(pi$M)),]
+ggplot(pi) +
+  geom_vline(xintercept=0, color="green") +
+  geom_jitter(data=parDistributionFor(fit3, pi, samples=800),
+              aes(value, cor), height = 0.35, alpha=.05) +
+  geom_segment(aes(y=cor, yend=cor, x=L, xend=U),
+               color="yellow", alpha=.5) +
+  geom_point(aes(x=M, y=cor), color="red", size=1) +
+  theme(axis.title.y=element_blank())
 
 ## -----------------------------------------------------------------------------
 sessionInfo()
