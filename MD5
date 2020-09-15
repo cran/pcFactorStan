@@ -1,4 +1,4 @@
-851d1066e4d636e8555b646d0aa77a5d *DESCRIPTION
+4ea670a5b3a9a1713f2e94545b997005 *DESCRIPTION
 1975de3e690c0316a43ce4b9ac27be26 *NAMESPACE
 51f4e9fbb3eca32b329dbdd25a00714b *NEWS
 98f2945511229e6e51194ffa243228d7 *R/apps.R
@@ -8,12 +8,13 @@
 cf9a9f3fca4c49d297d00e4b8fad7337 *R/package.R
 cd5b7ef67eccc562b7e7552994264f37 *R/stanmodels.R
 c53bc4532ad9c88bd3850e64e5e5d5aa *R/zzz.R
-1ea7db4b8768d05f68eb44fe9959a7ba *README.md
-6a4c0e1d43269a3b91022166d146da80 *build/vignette.rds
+5c0622e3226422608c449a83f8159cc6 *README.md
+5f8b5bec70a2c0ea8e8aa409a14f60e8 *build/vignette.rds
 798545ca7621132c87a1b2074eb43edd *data/rcpa.rda
-74c2b7f794d537303fe02379608a0f61 *inst/doc/manual.R
-5a490ba87204fc95c3210a27f96f7df8 *inst/doc/manual.Rmd
-199ae6fb2c62bd8caf35d1534435773f *inst/doc/manual.html
+a4834bdeba06c24336fec4749c0df857 *inst/CITATION
+77c9aa4b01f7534ace9aa6e3dcf2be2c *inst/doc/manual.R
+a2f6c333ceeede1667615848550f1d69 *inst/doc/manual.Rmd
+e40a42e5d1194ef27ca64b7e0b975e46 *inst/doc/manual.html
 58ecb0a78b720b420641b96600b4413a *inst/itemModelExplorer/global.R
 51f27bfa9d7def16d9c581301ac8ca1e *inst/itemModelExplorer/server.R
 18cc94b690b863785e7626973d7873c6 *inst/itemModelExplorer/ui.R
@@ -41,7 +42,7 @@ b1890ff64581bc6d890549739394ac5f *man/itemModelExplorer.Rd
 fe309aeec43ab0a154f6555ab6b62e64 *man/parInterval.Rd
 83bf0a269bc9201807ce0bed90318180 *man/pcFactorStan-package.Rd
 b6e88d830b11f13bad74e59c95aadea0 *man/pcStan.Rd
-1221c42d538fb63acb2e58da6f6ccb7d *man/phyActFlowPropensity.Rd
+d7c1b8a513c5050f369e40c9a33741bf *man/phyActFlowPropensity.Rd
 87a001ea66bc39b788c6a51952511f4f *man/prepCleanData.Rd
 18cd31bdbc1305220dbf5043c4bef963 *man/prepData.Rd
 192fb459d19b5ad16902d2e0b856752c *man/prepFactorModel.Rd
@@ -80,4 +81,4 @@ eded693c6232399a4c0a6fd4af1a38e4 *tools/covr.R
 edb4ce9fe72611e7b3b791c00a87398d *tools/make_cc.R
 aba95b0bbac1732a238612de3155027e *tools/travis/install-linux
 915b5ba286b9a10e7bbcbcc7e39409b2 *tools/vignetter
-5a490ba87204fc95c3210a27f96f7df8 *vignettes/manual.Rmd
+a2f6c333ceeede1667615848550f1d69 *vignettes/manual.Rmd

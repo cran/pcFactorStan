@@ -4,9 +4,11 @@
 \name{phyActFlowPropensity}
 \alias{phyActFlowPropensity}
 \title{Physical activity flow propensity}
-\format{A data.frame with one row per activity comparison and items in
+\format{
+A data.frame with one row per activity comparison and items in
 the columns. All item responses are between -2 and 2. Zero indicates
-that both activities were judged equal on the trait.}
+that both activities were judged equal on the trait.
+}
 \source{
 A manuscript fully describing the study is in preparation.
 Data are made available under the \href{https://cdla.io/sharing-1-0/}{Community Data License Agreement - Sharing - Version 1.0}
