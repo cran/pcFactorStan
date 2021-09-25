@@ -11,7 +11,7 @@ that both activities were judged equal on the trait.
 }
 \source{
 A manuscript fully describing the study is in preparation.
-Data are made available under the \href{https://cdla.io/sharing-1-0/}{Community Data License Agreement - Sharing - Version 1.0}
+Data are made available under the \href{https://cdla.dev/sharing-1-0/}{Community Data License Agreement - Sharing - Version 1.0}
 }
 \usage{
 phyActFlowPropensity
