@@ -7,7 +7,7 @@ using namespace Rcpp ;
 RCPP_MODULE(stan_fit4unidim_adapt_mod) {
 
 
-    class_<rstan::stan_fit<stan_model, boost::random::ecuyer1988> >("model_unidim_adapt")
+    class_<rstan::stan_fit<stan_model, boost::random::ecuyer1988> >("rstantools_model_unidim_adapt")
 
     .constructor<SEXP,SEXP,SEXP>()
 
